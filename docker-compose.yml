@@ -1,0 +1,56 @@
+version: '3.7'
+services:
+  nodejs:
+    build: .
+    image: road2h-dmims
+    container_name: dmims
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    environment:
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_DB=road2h
+      - PORT=3000
+      - SUBCIG_COLLECTION=copd-cig-parameters
+      - TEMPLATES=dss-templates
+      - TREATMENT_REVIEW_ROUTE=copd-assess
+      - TREATMENT_SELECT_ROUTE=copd-careplan-select
+      - TEMPLATES_COPD=dss-templates_copd
+      - CIGS_MERGE_ROUTE=DB-HT-OA-merge
+      - DB-PRECONDITIONS_ROUTE=DB-careplan-select
+      - TMR_HOST=tmrweb
+      - TMR_PORT=8888
+      - TMR_DB=tmrweb
+      - TMR_CIG_CREATE=guideline/create
+      - TMR_CIG_DELETE=guideline/delete
+      - TMR_CIG_ADD=guidelines/add
+      - TMR_CIG_GET=guidelines/cig/get
+      - TMR_CIGS_INTERACTIONS=guidelines/interactions
+      - ARGUMENTATION_ENGINE_URL=aba-plus-g.herokuapp.com/generate_explanations
+    depends_on: 
+      - db
+    #  - .:/home/node/app
+    #  - node_modules:/home/node/app/node_modules
+    networks:
+      - dmims
+      - tmrwebx_cig_handler
+    #command: ./wait-for.sh db:27017 -- /home/node/app/node_modules/.bin/nodemon app.js
+  db:
+    image: mongo:latest
+    restart: unless-stopped
+    ports: 
+        - "27017:27017"
+    container_name: mongodb
+    volumes:
+      - ~/mongodata:/data/db
+    networks:
+      - dmims
+#external_links: 
+#  - tmrweb
+networks:
+  dmims: {}
+  tmrwebx_cig_handler:
+    external: true
+#volumes: 
+ # - ~/mongodata:
