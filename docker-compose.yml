@@ -11,14 +11,15 @@ services:
       - MONGODB_HOST=mongodb
       - MONGODB_PORT=27017
       - MONGODB_DB=road2h
+      - MONGODB_LOGS_PORT=27017
+      - MONGODB_LOGS=logs
       - PORT=3000
       - SUBCIG_COLLECTION=copd-cig-parameters
       - TEMPLATES=dss-templates
+      - TEMPLATES_COPD=dss-templates
+      - CDS_SERVICES=cds-services
       - TREATMENT_REVIEW_ROUTE=copd-assess
       - TREATMENT_SELECT_ROUTE=copd-careplan-select
-      - TEMPLATES_COPD=dss-templates_copd
-      - CIGS_MERGE_ROUTE=DB-HT-OA-merge
-      - DB-PRECONDITIONS_ROUTE=DB-careplan-select
       - TMR_HOST=tmrweb
       - TMR_PORT=8888
       - TMR_DB=tmrweb
@@ -28,6 +29,9 @@ services:
       - TMR_CIG_GET=guidelines/cig/get
       - TMR_CIGS_INTERACTIONS=guidelines/interactions
       - ARGUMENTATION_ENGINE_URL=aba-plus-g.herokuapp.com/generate_explanations
+      - DMIMS_HOST=localhost
+      - DMIMS_PORT=4000
+      - DMIMS_PATH=tmr
     depends_on: 
       - db
     #  - .:/home/node/app

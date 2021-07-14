@@ -45,7 +45,7 @@ const Template = mongoose.model("Template", templateSchema, (TEMPLATES || "dss-t
 //specific for COPD
 const Template_copd = mongoose.model("Template_copd", templateSchema, (TEMPLATES_COPD || "dss-templates_copd"));
 //schema for a CDS hook
-const HookSchema = mongoose.model("Hook", cdsServiceSchema, CDS_SERVICES || "cds-services");
+const HookSchema = mongoose.model("Service", cdsServiceSchema, CDS_SERVICES || "cds-services");
 
 //add all models to an array of Models
 let modelArray = [Template,Template_copd];
@@ -72,8 +72,11 @@ module.exports = {
 
     return _db;
   },
+
   modelArray,
+
   HookSchema,
+  
   /***
    * @returns {mongoose.Connection}
    */

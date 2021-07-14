@@ -2,7 +2,6 @@ cookie-parser
 express
 express-validator
 http-errors
-jsonpath-plus
 moment
 mongoose
 morgan
@@ -11,9 +10,7 @@ npm
 request
 n3
 dotenv
-deepmerge
 helmet
-pm2
 array.prototype.flat
 xss-clean
 express-rate-limit

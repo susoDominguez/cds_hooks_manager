@@ -1,6 +1,6 @@
 "use strict";
 
-const JSONPathPlus = require("jsonpath-plus");
+const jsonata = require("jsonata");
 const {
   paramName,
   functLabel,
@@ -21,37 +21,38 @@ const {
   compare,
   findRef,
   functName,
-} = require("../../database_modules/constants.js");
+  labelTemplate,
+} = require("../database_modules/constants.js");
 const flat = require("array.prototype.flat");
 const {
   arr_diff_nonSymm,
   calculate_age,
-  arr_diff,
-  getYearsFromNow,
+  getYearsFromNow
 } = require("./user-defined-functions");
-const { ErrorHandler } = require("../../lib/errorHandler");
-const logger = require("../../config/winston");
+const { ErrorHandler } = require("../lib/errorHandler");
+const logger = require("../config/winston");
 const { Model } = require("mongoose");
 
 ///////////////////////////////////////////////////////
 
 /**
  * add parameter and corresponding args to Map
- * @param {object} contextObj
- * @param {object} docObj
+ * @param {object} contextObj context as taken from request
+ * @param {object} docObj fetch template
  *
  */
-function getPathValueAndActions(contextObj, docObj) {
+function addFunctionsFromTemplateToArgsObject(docObj) {
   //get actions
   let actionArray = docObj[actionList];
 
   //check we are working w array
   if (!Array.isArray(actionArray))
-    throw new Error(
+    throw new ErrorHandler(
+      500,
       actionList + " object from MongonDB is not an array as expected"
     );
 
-  /// HANDLE ACTIONS
+  /// HANDLE ACTIONS ///
 
   //filter actions: function (goes first), comparison(second) and arra_eq (goes last)
   //object to be returned as output of this function
@@ -72,108 +73,139 @@ function getPathValueAndActions(contextObj, docObj) {
         //or if it is a comparison, it has more than one argument
         (obj[action] === comparison && obj[details][pathListIndex].length < 2)
     ),
+    //list of arguments. To be extracted from clinical context as part of request
     argsPathList: new Array(),
+    //list of assessed results. to be compared with arguments to select zero or more results if triggered.
     argsResultList: docObj[resultList],
   };
 
   //check they are arrays
-  if (!Array.isArray(argVals.funListAction) || !Array.isArray(argVals.actions))
-    throw new Error(
+  if (
+    !Array.isArray(argVals["funListAction"]) ||
+    !Array.isArray(argVals["actions"])
+  )
+    throw new ErrorHandler(
+      500,
       "actionLists have not been created dynamically as expected"
     );
 
-  //logger.info("Object argsVals is " + JSON.stringify(argVals, null,2));
+  return argVals;
+}
 
+/**
+ * add parameter and corresponding args to Map
+ * @param {object} contextObj context as taken from request
+ * @param {object} docObj fetch template
+ * @param {object} docObj object containing arrays with functions, arguments and assessed results
+ */
+function getDataPointValues(contextObj, docObj, argsPathList) {
   //three stages: path, actions-functions and action-results.
   //First fetch parameters, type properly, apply functions and add to MAP.
   //THen apply to already existing MAP object the actions for comparisons to find results
   //or the existing result if not comparison is needed
 
-  //paths:
+  //Array containing list of objects with data points to be extracted:
   const pathObj = docObj[pathList];
 
   //by checking if type array, it types pathObj
   if (!Array.isArray(pathObj))
-    throw new Error("field paths expected to be an array.");
+    throw new ErrorHandler(500, "field paths expected to be an array.");
 
   //for each path in pathList. If path is empty list, deal with it later
   for (const aPath of pathObj) {
+    //check it has all the expected properties
     if (
       !(
         aPath.hasOwnProperty(typePath) ||
         aPath.hasOwnProperty(isMandatory) ||
-        aPath.hasOwnProperty(xpath)
+        aPath.hasOwnProperty(xpath) ||
+        aPath.hasOwnProperty(labelTemplate)
       )
     )
-      throw Error(`property missing in object PathList from template`);
+      throw new ErrorHandler(
+        500,
+        `MongoDB: Parameter ${
+          docObj[paramName]
+        } is missing a required attribute in Property ${pathList}. ${
+          aPath.hasOwnProperty(labelTemplate)
+            ? " Label value is " + aPath[labelTemplate]
+            : ""
+        }`
+      );
 
+    //label of data
+    let dataLabel = aPath[labelTemplate];
     //type of path
-    let typepath = aPath[typePath];
+    let dataType = aPath[typePath];
 
     //is this data optional?
-    let isOptional = !aPath[isMandatory];
+    let isDataOptional = !aPath[isMandatory];
 
     //string with the xpath to value and the default value
-    let pathToVal = aPath[xpath];
-
-    //get default value (possibly undefined) and check whether it is also a path to data in a resource
-    let defaultPathToVal = aPath[defaultVal];
-
-    //are we dealing with another Xpath format?
-    let isDefaultValXpath =
-      defaultPathToVal !== undefined &&
-      (("" + defaultPathToVal).startsWith("$.") ||
-        ("" + defaultPathToVal).startsWith("$["));
+    let jpathStr = aPath[xpath];
 
     //obtain value from request body. If not found, it returns undefined.
     //Also could be undefined on purpose to add user-defined values in default.
-    let dataInXpath =
-      pathToVal && pathToVal.trim() !== ""
-        ? getDataFromContext(pathToVal, contextObj)
+    let valueFromContext =
+      jpathStr && jpathStr.trim() !== ""
+        ? getDataFromContext(jpathStr, contextObj)
         : undefined;
 
-    //if undefined, get the default value which could also be undefined or a Xpath of the same type as the main one
-    if (dataInXpath === undefined) {
+    
+        //get default value (possibly undefined) and check whether it is also a path to data in a resource
+        let defaultValue = aPath[defaultVal];
+
+        // is it an array?
+        if ( ("" + defaultValue).trim().startsWith("[")) defaultValue = JSON.parse(defaultValue);
+
+        //are we dealing with another JSONPath format? //TODO: Possibly add another property to confirm it is a JPath
+        let isDefaultValueJpath =
+          defaultValue !== undefined && !Array.isArray(defaultValue) &&
+          (("" + defaultValue).startsWith("context") ||
+            ("" + defaultValue).startsWith("prefetch"));
+
+    //if undefined, get the default value which could also be undefined or a JSONpath of the same type as the main one
+    if (valueFromContext === undefined) {
       //if default is a path, apply Jsonpath otherwise return the value
-      dataInXpath = isDefaultValXpath
-        ? getDataFromContext(defaultPathToVal, contextObj)
-        : defaultPathToVal;
+      valueFromContext = isDefaultValueJpath
+        ? getDataFromContext(defaultValue, contextObj)
+        : defaultValue;
     }
 
-    logger.info(
-      "value(s) found in Resources are: " + JSON.stringify(dataInXpath)
-    );
-
     //if this parameter is still undefined :
-    if (dataInXpath === undefined) {
+    if (valueFromContext === undefined) {
       //but optional:
-      if (isOptional) {
+      if (isDataOptional) {
         //return undefined to hold the position in the array of arguments
-        argVals["argsPathList"].push(undefined);
+        argsPathList.push(undefined);
         //then continue to next iteration
         continue;
       } else {
         //if mandatory, end process and send error
-        throw Error(
-          `parameter ${docObj[paramName]} has an undefined value but it seems it should have at least a default value as it is mandatory.`
+        throw new ErrorHandler(
+          500,
+          `MongoDB: In parameter ${docObj[paramName]}, data Object ${dataLabel} is required yet its value could not be extracted from the request neither a default value is specified in the template.`
         );
       }
     }
 
+    logger.info(
+      `Extracted context value for property ${dataLabel} in MOngoDb is:  ${JSON.stringify(
+        valueFromContext
+      )}`
+    );
+
     /// VALUE IS ALREADY EXTRACTED ///
 
     //typing the extracted data
-    dataInXpath = typePathVal(typepath, dataInXpath);
-
-    //is it an array path?
-    //let isArrayData = Array.isArray(dataInXpath);
+    valueFromContext = typePathVal(dataType, valueFromContext);
 
     //add value to list after potentially applying a function on it. Remove from arra wrapping if required
-    argVals["argsPathList"].push(dataInXpath);
+    argsPathList.push(valueFromContext);
   }
 
   //return object with actions and arguments
-  return argVals;
+  //return argVals;
 }
 
 /**
@@ -182,65 +214,60 @@ function getPathValueAndActions(contextObj, docObj) {
  * @param {object} contextObj hook context
  */
 function getDataFromContext(jsonpath, contextObj) {
-  return jsonpath === undefined || jsonpath === null || jsonpath.trim() === ""
-    ? undefined
-    : JSONPathPlus.JSONPath({
-        path: jsonpath,
-        wrap: false,
-        flatten: true,
-        json: contextObj,
-      });
+  if (jsonpath === undefined || jsonpath === null || jsonpath.trim() === "")
+    return undefined;
+
+  //compiled path expression
+  let expression = jsonata(jsonpath);
+  //evaluate expression against JSON structure
+  return expression.evaluate(contextObj);
 }
 
 /**
  * Convert values to specified type
- * @param {Array} dataInXpath array or primitive value extracted from resource
+ * @param {Array} value array or primitive value extracted from resource
  * @return {Array} dataInXpath
  */
-function typePathVal(typepath, dataInXpath) {
-
+function typePathVal(typepath, value) {
   //number of iterations to do on the switch command.
   //one is default as the first one is mandatory by using do-while loop
   let iters = 1;
 
   //if of type array then add values to array. If not, do it just once
   //is it an array path?
-  let isArrayData = Array.isArray(dataInXpath);
+  let isArrayData = Array.isArray(value);
 
-  //logger.info(
-  //  "is oftype array the data extracted using JSONPath? " + isArrayData
-  // );
-
+  //array to make calculations
+  let resultArr;
   //we are expecting an Array of primitive values. Array of Arrays will not work
   if (isArrayData) {
     //iterations equal to length of array
-    iters = dataInXpath.length;
+    iters = value.length;
+    resultArr = value;
   } else {
     //if not an array, wrap into an array for consistency in function application.
-    let temp = dataInXpath;
-    //Then unwrap for finalising result
-    dataInXpath = new Array();
-    dataInXpath.push(temp);
+    resultArr = [];
+    resultArr.push(value);
   }
 
   do {
-    let tempVal = dataInXpath[iters - 1];
+    let tempVal = resultArr[iters - 1];
     //logger.info("tempVal at typing process is " + tempVal);
 
     //logger.info(`value at  path is ${JSON.stringify(temp)}`);
     //if type of value is not String, then change type as specified
     switch (typepath) {
       case "date":
-        dataInXpath[iters - 1] = new Date(tempVal);
+        resultArr[iters - 1] = new Date(tempVal);
         break;
       case "number":
-        dataInXpath[iters - 1] = Number(tempVal);
+        resultArr[iters - 1] = Number(tempVal);
         break;
       case "boolean":
-        dataInXpath[iters - 1] = tempVal == 1; //TODO: check other ways to convert values into booleans
+        resultArr[iters - 1] = tempVal >= 1; //null,undefined are false.
         break;
       case "string":
-        dataInXpath[iters - 1] = "" + tempVal;
+        resultArr[iters - 1] = "" + tempVal;
         break;
     }
 
@@ -248,9 +275,63 @@ function typePathVal(typepath, dataInXpath) {
   } while (--iters > 0);
 
   //if initial data was not an array, unwrap it from the array we created
-  if (!isArrayData) dataInXpath = dataInXpath[0];
+  return !isArrayData ? resultArr[0] : resultArr;
+}
 
-  return dataInXpath;
+/**
+ *
+ * @param {object} hookObj context as taken from request object
+ * @param {object} actObj object findRef action definition from Fetch Template
+ * @returns array
+ */
+function findReferencesInContext(hookObj, listOfArgs, actObj, indexArr) {
+  //check for properties
+  if (
+    !(
+      actObj.hasOwnProperty(details) ||
+      actObj[details].hasOwnProperty(xpath) ||
+      actObj[details].hasOwnProperty(typePath)
+    )
+  )
+    throw handleError(
+      500,
+      `property ${details} is missing  property ${xpath} or ${typePath} in object ActionList on template`
+    );
+
+  //xpath is expected to be written with 2 placeholders: var1 and var2
+  let xPathStr = actObj[details][xpath] || undefined;
+  let typing = actObj[details][typePath] || undefined;
+
+  //get reference(s) from array with arguments
+  let refArr = listOfArgs[indexArr[0]];
+
+  //list of results that will replace the list of arguments at the given index of the general argsList array
+  let tempList = new Array();
+
+  //for each reference
+  for (const refString of refArr) {
+    //replace var1 and var2 by refString parts
+    let refWords = refString.split("/");
+
+    //find value in Path.
+    //replace placeholders by FHIR ResourceType and FHIR Id
+    let pathStr = xPathStr
+      .replace("var1", refWords[0])
+      .replace("var2", refWords[1]);
+    logger.info(`path string is ${pathStr}`);
+    let temp = getDataFromContext(pathStr, hookObj);
+
+    if (!temp)
+      throw new ErrorHandler(
+        500,
+        `Function reference finder has not been able to find the reference in the context using the specified data from MOngoDB`
+      );
+    //add to temp list
+    tempList.push(temp);
+  }
+  //typing of values
+  //replace args with new data list
+  return typePathVal(typing, tempList);
 }
 
 /*** Applies user defined functions or actions where all the arguments come from the CDS Hook.
@@ -274,10 +355,8 @@ function applyActions(hookObj, funListAction, listOfArgs) {
           ? actObj[details][functName]
           : actObj[action];
     } else {
-      logger.error(
-        `property ${action} or  ${details} are not found in object ActionList on template`
-      );
-      throw Error(
+      throw new ErrorHandler(
+        500,
         `property ${action} or ${details} are not found in object ActionList on template`
       );
     }
@@ -290,17 +369,16 @@ function applyActions(hookObj, funListAction, listOfArgs) {
     ) {
       indexArr = actObj[details][pathListIndex];
     } else {
-      logger.error(
-        `property ${details} or ${pathListIndex}  are not found in object ActionList on template`
-      );
-      throw Error(
+      throw new ErrorHandler(
+        500,
         `property ${details} or ${pathListIndex} are not found in object ActionList on template`
       );
     }
 
     //if anything fails, throw error
     if (!Array.isArray(indexArr))
-      throw Error(
+      throw new ErrorHandler(
+        500,
         `MongoDb error: actionList has issues with a function on the MongoDb. Check details of function ${funName}.`
       );
 
@@ -316,7 +394,9 @@ function applyActions(hookObj, funListAction, listOfArgs) {
       //values possibly wrapped in singleton Array, remove for comparison
       var lhsArg = listOfArgs[indexArr[0]];
       var rhsArg = listOfArgs[indexArr[1]];
-      logger.info(`LHS value is ${lhsArg} and RHS value is ${rhsArg} when comparing  data from indexes ${indexArr[0]} and ${indexArr[1]} respectively`);
+      logger.info(
+        `LHS value is ${lhsArg} and RHS value is ${rhsArg} when comparing  data from indexes ${indexArr[0]} and ${indexArr[1]} respectively`
+      );
       //To compare 2 values taken from the pathList, we expect at most one singleton array or a primitive value; otherwise it is an error
       //if singleton array, fetch value else error
       if (Array.isArray(lhsArg) && lhsArg.length < 2) {
@@ -324,8 +404,11 @@ function applyActions(hookObj, funListAction, listOfArgs) {
       } else {
         //if it is an array then it must have size greater than 2
         if (Array.isArray(lhsArg))
-          throw Error(
-            `action comparison from template DB has more than 1 argument on its RHS parameter (array)`
+          throw handleError(
+            500,
+            `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
+              lhsArg
+            )} on its LHS parameter (array). Check Request body or JSONpath`
           );
       }
       if (Array.isArray(rhsArg) && rhsArg.length < 2) {
@@ -333,8 +416,11 @@ function applyActions(hookObj, funListAction, listOfArgs) {
       } else {
         //if it is an array then it must have size greater than 2
         if (Array.isArray(rhsArg))
-          throw Error(
-            `comparison action has more than 1 argument on its LHS parameter (array?) when only one argument was expected`
+          throw new ErrorHandler(
+            500,
+            `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
+              rhsArg
+            )} on its LHS parameter (array). Check Request body or JSONpath`
           );
       }
 
@@ -360,69 +446,51 @@ function applyActions(hookObj, funListAction, listOfArgs) {
           newVal = lhsArg !== rhsArg;
           //TODO: if ofType Date, lhsArg.getTime() !== rhsArg.getTime()
           break;
-       // TODO: case "in":
-         // newVal = (Array.isArray(lhsArg)) ? 
+        // TODO: case "in":
+        // newVal = (Array.isArray(lhsArg)) ?
       }
       //the non-updated argument(s) must be removed so it does not show as a result
       //listOfArgs[indexArr[1]] = undefined;
     } else {
+      //REFERENCE FINDER//
       //if a reference finder action, the argument is expected to be a list of references of sort 'ResourceType/Id'
       if (funName === findRef) {
-        //check for properties
-        if (
-          !(
-            actObj.hasOwnProperty(details) ||
-            actObj[details].hasOwnProperty(xpath) ||
-            actObj[details].hasOwnProperty(typePath)
-          )
-        )
-          throw Error(
-            `property ${details} is missing  property ${xpath} or ${typePath} in object ActionList on template`
-          );
-
-        //xpath is expected to be written with 2 placeholders: var1 and var2
-        let xPath = actObj[details][xpath] || undefined;
-        let typing = actObj[details][typePath] || undefined;
-
-        //get list of references
-        let refArr = listOfArgs[indexArr[0]];
-
-        //list of results that will replace the list of arguments at the given index of the general argsList array
-        let tempList = new Array();
-
-        //for each reference
-        for (const refString of refArr) {
-          //replace var1 and var2 by refString parts
-          let refWords = refString.split("/");
-
-          //find value in Path.
-          //replace placeholders by FHIR ResourceType and FHIR Id
-          let temp = getDataFromContext(
-            xPath.replace("var1", refWords[0]).replace("var2", refWords[1]),
-            hookObj
-          );
-
-          //add to temp list
-          tempList.push(temp);
-        }
-        //typing of values
-        //replace args with new data list
-        newVal = typePathVal(typing, tempList);
+        //find Resources in context from a list of given references
+        newVal = findReferencesInContext(hookObj, listOfArgs, actObj, indexArr);
       } else {
         //name of user-defined functions. Extend by adding label and how to apply function
         switch (funName) {
+
           case "getYearsFromNow":
             //this case has only one arg so index value has to be at index 0
             newVal = getYearsFromNow(listOfArgs[indexArr[0]]);
             break;
+
           case "calculate_age":
             //this case has only one arg so index value has to be at index 0
             newVal = calculate_age(listOfArgs[indexArr[0]]);
             break;
+            
           case "arr_diff_nonSymm":
+            //make sure they are both arrays
+            let arr1 = new Array();
+            let arr2 = new Array();
+
+            if(!Array.isArray(listOfArgs[indexArr[0]])) {
+              arr1.push(listOfArgs[indexArr[0]]);
+            } else {
+              arr1 = listOfArgs[indexArr[0]];
+            }
+
+            if(!Array.isArray(listOfArgs[indexArr[1]])) {
+              arr2.push(listOfArgs[indexArr[1]]);
+            } else {
+              arr2 = listOfArgs[indexArr[1]];
+            }
+
             newVal = arr_diff_nonSymm(
-              listOfArgs[indexArr[0]],
-              listOfArgs[indexArr[1]]
+              arr1,
+              arr2
             );
           //the non-updated argument(s) must be removed so it does not show as a result
           //listOfArgs[indexArr[1]] = undefined;
@@ -493,44 +561,41 @@ async function getOutcomeList(
         actionObj.hasOwnProperty(details) ||
         actionObj[details].hasOwnProperty(resultArgListIndex) ||
         actionObj[details].hasOwnProperty(pathListIndex) ||
-        argsPathList.hasOwnProperty(indexPathArg)
+        argsPathList.hasOwnProperty(lhsArgIndex)
       )
     )
-      throw Error(
+      throw new ErrorHandler(
+        500,
         `Expected properties are missing from the actionList on the DB template`
       );
 
     //fetch their indices first:
 
     //by definition, resultArgListIndex is not of array type
-    let indexResultArg = actionObj[details][resultArgListIndex];
+    let rhsArgIndex = actionObj[details][resultArgListIndex];
 
     //by definition, pathListIndex is an array and the value at index 0 is used
-    let indexPathArg = actionObj[details][pathListIndex][0];
+    let lhsArgIndex = actionObj[details][pathListIndex][0];
 
-    //Next, use the indexPathArg to get the value for the lhs. Note that rhs could have many results to select from
-    let valueAtPathIndex = argsPathList[indexPathArg];
+    //Next, use the lhs index to get the value for the lhs. Note that rhs could have many results to select from
+    let aLHSVal = argsPathList[lhsArgIndex];
 
-    //Now we check whether any of the arguments is undefined, if it is, we implicitly take it as a positive result and skip to next action
-    if (valueAtPathIndex === undefined) continue;
+    //Now we check whether the arguments is undefined, if it is, we implicitly take it as a positive result -we added undefined to hold a position- and skip to next action
+    if (aLHSVal === undefined) continue;
 
     //check whether we are working with an element or a singleton array
-    let isSingletonArrValueAtPathIndex =
-      Array.isArray(valueAtPathIndex) && valueAtPathIndex.length < 2
-        ? true
-        : false;
+    let isSingletonLHSValue =
+      Array.isArray(aLHSVal) && aLHSVal.length < 2 ? true : false;
     //if the argument is wrap in a singleton array, unwrap
-    valueAtPathIndex = isSingletonArrValueAtPathIndex
-      ? valueAtPathIndex[0]
-      : valueAtPathIndex;
+    aLHSVal = isSingletonLHSValue ? aLHSVal[0] : aLHSVal;
 
     //now test again for the updated value.
     //At this point We have either a primitive value or an array of size gt 1
-    let isArrayValueAtPathIndex = Array.isArray(valueAtPathIndex);
+    let isLHSValList = Array.isArray(aLHSVal);
 
     logger.info(
-      `indices and values for lhs and rhs respectively are: index lhs ${indexPathArg} and rhs ${indexResultArg}. Value lhs ${JSON.stringify(
-        valueAtPathIndex
+      `indices and values for lhs and rhs respectively are: index lhs ${lhsArgIndex} and rhs ${rhsArgIndex}. Value lhs ${JSON.stringify(
+        aLHSVal
       )}`
     );
 
@@ -543,21 +608,16 @@ async function getOutcomeList(
       actionName = actionObj[details][compare];
     }
 
-    logger.info("action name is " + actionName);
+    logger.info("name of action is " + actionName);
 
     ///now construct the query//
 
     //projection field
     //if index is -1, use the whole resultList array instead of just a particular element at index i
     //this is the RHS value
-    let resultArgAtIndexObj = {
-      $arrayElemAt: ["$$resultObject." + argList, indexResultArg],
+    let arrayElemAtRhs = {
+      $arrayElemAt: ["$$resultObject." + argList, rhsArgIndex],
     };
-
-    /*
-    logger.info(
-      "resultArgAtIndexObj name is " + JSON.stringify(resultArgAtIndexObj)
-    );*/
 
     //object for the comparison
     let compObj; //TODO: comparison between 2 params and then result. Use param at index 0 with result
@@ -566,80 +626,81 @@ async function getOutcomeList(
     switch (actionName) {
       case "eq":
         compObj = {
-          $eq: [valueAtPathIndex, resultArgAtIndexObj],
+          $eq: [aLHSVal, arrayElemAtRhs],
         };
         break;
       case "gte":
         compObj = {
-          $gte: [valueAtPathIndex, resultArgAtIndexObj],
+          $gte: [aLHSVal, arrayElemAtRhs],
         };
         break;
       case "gt":
         compObj = {
-          $gt: [valueAtPathIndex, resultArgAtIndexObj],
+          $gt: [aLHSVal, arrayElemAtRhs],
         };
         break;
       case "lte":
         compObj = {
-          $lte: [valueAtPathIndex, resultArgAtIndexObj],
+          $lte: [aLHSVal, arrayElemAtRhs],
         };
         break;
       case "lt":
         compObj = {
-          $lt: [valueAtPathIndex, resultArgAtIndexObj],
+          $lt: [aLHSVal, arrayElemAtRhs],
         };
         break;
+
       case "inRHS": //RHS is the ResultList
         //element in resultList.argList at index i, exists in array at pathList index i'
 
-      //2 cases:
-      //case 1: LHS is not an array
-      if(!isArrayValueAtPathIndex) {
-        compObj = {
-          $cond: [
-            //check whether the rhs is an array of values
-            { $isArray: [resultArgAtIndexObj] },
-            //if it is, find whether the first elem exists in the second
-            { $in: [valueAtPathIndex, resultArgAtIndexObj] },
-            //otherwise find whether both elems are equal
-            { $eq: [valueAtPathIndex, resultArgAtIndexObj] }
-          ]
-        };
-      } else {
-        //case 2: LHS is an array
-        compObj = {
-          $cond: [
-            //check whether the rhs is an array of values
-            { $isArray: [resultArgAtIndexObj] },
-            //if it is, find whether the first array is a subset of the second
-            { $setIsSubset: [valueAtPathIndex, resultArgAtIndexObj] },
-            //otherwise this is false since an array cannot be in on elem
-            false
-          ],
-        };
-      }
-       break;
-      case "inLHS": 
-        //element in array at pathList index i', exists in resultList.argList at index i
-        //if element in array at pathList index i' is an array, then by default of algorithm it has size greater than 1 and the operation is a subsetOf
-        if (isArrayValueAtPathIndex) {
+        //2 cases:
+        //case 1: LHS is not an array
+        if (!isLHSValList) {
           compObj = {
             $cond: [
-              { $isArray: [resultArgAtIndexObj] },
-              { $setIsSubset: [resultArgAtIndexObj, valueAtPathIndex] },
+              //check whether the rhs is an array of values
+              { $isArray: [arrayElemAtRhs] },
+              //if it is, find whether LHS value exists in RHS array
+              { $in: [aLHSVal, arrayElemAtRhs] },
+              //otherwise find whether both elems are equal
+              { $eq: [aLHSVal, arrayElemAtRhs] },
+            ],
+          };
+        } else {
+          //case 2: LHS is an array
+          compObj = {
+            $cond: [
+              //check whether the rhs is an array of values
+              { $isArray: [arrayElemAtRhs] },
+              //if it is, find whether the LHS array is a subset of the RHS array
+              { $setIsSubset: [aLHSVal, arrayElemAtRhs] },
+              //otherwise this is false since the LHS array is by def > 1 and RHS is a primitive val
+              false,
+            ],
+          };
+        }
+        break;
+      case "inLHS":
+        //element in array at pathList index i', exists in resultList.argList at index i
+        //if element in array at pathList index i' is an array, then by default of algorithm it has size greater than 1 and the operation is a subsetOf
+        if (isLHSValList) {
+          compObj = {
+            $cond: [
+              { $isArray: [arrayElemAtRhs] },
+              { $setIsSubset: [arrayElemAtRhs, aLHSVal] },
               //if it is not an array but the LHS is, then check whether the RHS exists in the LHS array
-              { $in: [resultArgAtIndexObj, valueAtPathIndex ] }
-            ]
+              { $in: [arrayElemAtRhs, aLHSVal] },
+            ],
           };
         } else {
           //lhs arg is not an array
           compObj = {
             $cond: [
-              { $isArray: [resultArgAtIndexObj] },
+              { $isArray: [arrayElemAtRhs] },
               //if rhs is an array then this is false
               false,
               //if both are not arrays, this is an eq comparison
-              { $eq: [valueAtPathIndex, resultArgAtIndexObj] },
+              { $eq: [aLHSVal, arrayElemAtRhs] },
             ],
           };
         }
@@ -677,15 +738,15 @@ async function getOutcomeList(
         $group: {
           _id: "$_id",
           results: {
-            $push: { $concatArrays: ["$" + resultList + "." + outcome] }
-          }
-        }
-      }
+            $push: { $concatArrays: ["$" + resultList + "." + outcome] },
+          },
+        },
+      },
     ]);
 
     //flatten outcome 2 layers down max items in result
     logger.info(`result Array is ${JSON.stringify(resultArr)}`);
-    mergedResults = flat(resultArr[0].results[0],2);
+    mergedResults = flat(resultArr[0].results[0], 2);
   } catch (error) {
     logger.error(
       `object ${key} failed  to convert results using the DB:  ${error}`
@@ -693,10 +754,14 @@ async function getOutcomeList(
     throw error;
   }
 
-
-    logger.info(`mergedResults Array is ${JSON.stringify(mergedResults)}`);
+  logger.info(`mergedResults Array is ${JSON.stringify(mergedResults)}`);
   //add to Map
   return mergedResults;
 }
 
-module.exports = { getPathValueAndActions, getOutcomeList, applyActions };
+module.exports = {
+  getDataPointValues,
+  getOutcomeList,
+  applyActions,
+  addFunctionsFromTemplateToArgsObject,
+};

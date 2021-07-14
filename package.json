@@ -1,8 +1,8 @@
 {
-  "name": "dss-road2h",
-  "version": "2.0.1",
+  "name": "cds_hooks_manager",
+  "version": "1.0.0",
   "private": true,
-  "description": "A FHIR-based data management interoperability microservice composed of data management controller, data manipulation and data aggregation services to interact with FHIR-integrated EHRs adhere to the CDS HOOKS format",
+  "description": "A CDS Hooks middleware microservice to parse, analyse and transform EHR FHIR-based data in JSON format into new information to be made available to CDS services",
   "main": "app.js",
   "engines": {
     "node": "~12.13.0",
@@ -15,14 +15,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/susoDominguez/dss-road2h"
+    "url": "https://github.com/susoDominguez/cds_hooks_manager"
   },
   "dependencies": {
     "array.prototype.flat": "^1.2.4",
     "axios": "^0.21.1",
     "cookie-parser": "~1.4.5",
     "debug": "^4.3.1",
-    "deepmerge": "^4.2.2",
     "dotenv": "^9.0.0",
     "express": "~4.17.1",
     "express-mongo-sanitize": "^2.0.2",
@@ -31,12 +30,10 @@
     "helmet": "^4.4.1",
     "http-errors": "~1.8.0",
     "http-graceful-shutdown": "^3.1.1",
-    "jsonpath-plus": "^5.0.3",
+    "jsonata": "^1.8.4",
     "moment": "^2.29.1",
     "mongoose": "^5.11.15",
     "morgan": "~1.10.0",
-    "qs": "^6.7.0",
-    "querystring": "^0.2.1",
     "winston": "^3.3.3",
     "winston-mongodb": "^5.0.7",
     "xss-clean": "^0.1.1"
@@ -52,7 +49,6 @@
   "author": "Jesus Dominguez <jesus.dominguez@kcl.ac.uk>",
   "license": "ISC",
   "devDependencies": {
-    "assert": "^2.0.0",
     "nodemon": "^2.0.7"
   }
 }

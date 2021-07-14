@@ -25,8 +25,7 @@ const paramSchema = new Schema({
           required: false,
           default: undefined,
         },
-        isMandatory: { type: Boolean, required: true, default: true },
-        isRequired: { type: Boolean, required: false, default: true }
+        required: { type: Boolean, required: true, default: true },
       },
     ],
     required: true,
@@ -37,13 +36,7 @@ const paramSchema = new Schema({
       {
         action: {
           type: String,
-          enum: [
-            "inLHS",
-            "function",
-            "comparison",
-            "inRHS",
-            "findRef"
-          ],
+          enum: ["inLHS", "function", "comparison", "inRHS", "findRef"],
           default: "inLHS",
           required: true,
         },
@@ -56,13 +49,13 @@ const paramSchema = new Schema({
               type: Number,
               required: false,
             },
-           //case comparison
+            //case comparison
             compare: {
               type: String,
               required: false,
               enum: ["eq", "gt", "gte", "lt", "lte", "ne"],
             },
-            //ALL cases 
+            //ALL cases
             pathListIndex: {
               type: [Number],
               required: false,
@@ -74,24 +67,24 @@ const paramSchema = new Schema({
               required: false,
               enum: ["boolean", "array", "string", "date", "number"],
               default: "string",
-            }
-          }
-        }
-      }
+            },
+          },
+        },
+      },
     ],
     required: true,
-    default: []
+    default: [],
   },
   resultList: {
     type: [
       {
         argList: { type: [Schema.Types.Mixed], required: true, default: [] },
         outcome: { type: [Schema.Types.Mixed], required: true, default: [] },
-      }
+      },
     ],
     required: true,
     default: [],
-  }
+  },
 });
 
 ///SCHEMA FOR STRUCTURAL TEMPLATES
@@ -108,20 +101,28 @@ const templateSchema = new Schema({
         fields: { type: [{ path: { type: String } }] },
         entryObject_property: { type: String },
         entryObject: { type: Schema.Types.Mixed },
-      }
+      },
     ],
     required: true,
   },
-  body: { type: Schema.Types.Mixed, required: true }
+  body: { type: Schema.Types.Mixed, required: true },
 });
 
 //
 
-const cdsServiceSchema = new Schema({ hook: {type: String, required: true},
-title: {type: String, required: true},
-description: {type: String, required: true},
-id: {type: String, required: true},
-prefetch: {type: Schema.Types.Mixed}});
+const cdsServiceSchema = new Schema({
+  cigId: { type: String, required: true, default: "tmr" },
+  services: {
+    type: [
+      {
+        hook: { type: String, required: true, default: "careplan-review"  },
+        title: { type: String, required: true },
+        description: { type: String, required: true },
+        id: { type: String, required: true, default: "careplan-review" },
+        prefetch: { type: Schema.Types.Mixed, required: false },
+      },
+    ],
+  },
+});
 
-
-module.exports = { paramSchema, templateSchema, cdsServiceSchema};
+module.exports = { paramSchema, templateSchema, cdsServiceSchema };

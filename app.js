@@ -24,7 +24,7 @@ initDb().then( () => logger.info('database initiated successfully')).catch( err 
 //environmental variables TODO: define later
 app.set('port', process.env.PORT || 3000)
 app.set('views', path.join(__dirname, 'views'));
-//app.set('view engine', 'pug');
+app.set('view engine', 'pug');
 
 const limit = rateLimit({
   max: 100,// max requests
@@ -50,7 +50,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Add a health check route in express
 app.get('/_health', (req, res) => {
   res.status(200).send('ok');
-})
+});
 
 //router
 app.use('/cds-services', limit, cdsServicesRouter);
@@ -70,26 +70,27 @@ function exitHandler(options, exitCode) {
 }
 
 // error handler for development and production
-app.use(function(err, req, res, next) {
+app.use( function(err, req, res, next) {
   // set locals, only providing error in development
   res.locals.message = err.message;
   //if env is dev then return error otherwise empty object
   res.locals.error = req.app.get('env') === 'development' ? err : {};
 
+  //logger.error(`${err.status || 500} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
   logger.error({status: err.status || 500,
-   message: err.message || 'no messagge',
-  stack: err.stack || 'no stack',
-config: err.config || 'no config',
-  originalUrl: req.originalUrl || 'none',
-  method: req.method || 'no method',
-  ip: req.ip || 'no ip',
-body_of_message: req.body || 'no request body'});
-   // ${err.status || 500} - ${err.message} - ${err.stack}  - ${ (err.config)?JSON.stringify(err.config): 'no config error' } - ${req.originalUrl} - ${req.method}  - ${req.ip} - ${JSON.stringify(req.body)}`);
+    message: err.message || 'no messagge',
+   stack: err.stack || 'no stack',
+    config: err.config || 'no config',
+   originalUrl: req.originalUrl || 'none',
+   method: req.method || 'no method',
+   ip: req.ip || 'no ip',
+    //body_of_message: req.body || 'no request body'
+  });
  
   // render the error page
-  //res.status(err.status || 500);
+  //res.sendStatus(err.status || 500);
   handleError(err, res);
-  //res.json({error: err.message});
+  //res.render('error');
 });
 
-module.exports = app; //DEBUG=dss-road2h:* npm run devstart
+module.exports = app; //DEBUG=cds_hooks_manager:* npm run devstart

@@ -1,5 +1,5 @@
 const moment = require("moment");
-const logger = require("../../config/winston.js");
+const logger = require("../config/winston.js");
 
 ////////////user-defined functions/////////
 /**
