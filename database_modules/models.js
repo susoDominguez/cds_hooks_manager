@@ -1,11 +1,13 @@
-"use strict";
-const mongoose = require("mongoose");
-const { isAncestor_eq, isAncestor_strict, isDescendant_eq, isDescendant_strict } = require("./constants")
+const mongoose = require('mongoose');
+const {servicesConnection, tmrConnection} = require('./connections');
+
+
+const { isAncestor_eq} = require("./constants")
 //Define a schema
 const Schema = mongoose.Schema;
 
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
-const paramSchema = new Schema({
+const paramSchema = new mongoose.Schema({
   parameter: { type: String, required: true, maxlength: 100 },
   cigInvolved: { type: [String], required: false, default: [], maxlength: 100 },
   //list of objects specifying where to find the data, their type and default values (possibly another Jsonpath) if data not found
@@ -91,6 +93,9 @@ const paramSchema = new Schema({
     required: true,
     default: [],
   },
+}, {
+    versionKey: false,
+    timestamps: true,
 });
 
 ///SCHEMA FOR STRUCTURAL TEMPLATES
@@ -112,11 +117,14 @@ const templateSchema = new Schema({
     required: true,
   },
   body: { type: Schema.Types.Mixed, required: true },
+}, {
+    versionKey: false,
+    timestamps: true,
 });
 
 //
 
-const cdsServiceSchema = new Schema({
+const cdsServiceSchema = new mongoose.Schema({
   cigModel: { type: String, required: true, default: "tmr" },
   services: {
     type: [
@@ -129,6 +137,14 @@ const cdsServiceSchema = new Schema({
       },
     ],
   },
+}, {
+    versionKey: false,
+    timestamps: true,
 });
 
-module.exports = { paramSchema, templateSchema, cdsServiceSchema };
+const serviceModel = servicesConnection.model('Cds-Service', cdsServiceSchema);
+//const todoModel = todoConnection.model('Todo', todoSchema);
+
+module.exports = {
+    serviceModel
+};

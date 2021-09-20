@@ -16,12 +16,13 @@ const {
   CDS_SERVICES
 } = process.env;
 
+//available schemas
 const {paramSchema, templateSchema, cdsServiceSchema} = require("./mongoose_schemas");
 
 
 const db_host = ( MONGODB_HOST || "localhost");
 const db_port = ( MONGODB_PORT || "27017" );
-const db_name = ( MONGODB_DB || "road2h" );
+const db_name = ( MONGODB_DB || "cds-services" );
 
 const options = {
   useNewUrlParser: true,
@@ -35,21 +36,18 @@ const options = {
 const url = `mongodb://${db_host}:${db_port}/${db_name}`;
 //const url = `mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@${db_host}:${db_port}/${db_name}?authSource=admin`;
 
-//constant to convert route label to DB collection label
-const params = '-params';
-
 //Below we instantiate each pre-defined Collection with its associated model
 
 //linked to the template collection
-const Template = mongoose.model("Template", templateSchema, (TEMPLATES || "dss-templates"));
+//const Template = mongoose.model("Template", templateSchema, (TEMPLATES || "dss-templates"));
 //specific for COPD
-const Template_copd = mongoose.model("Template_copd", templateSchema, (TEMPLATES_COPD || "dss-templates_copd"));
+//const Template_copd = mongoose.model("Template_copd", templateSchema, (TEMPLATES_COPD || "dss-templates_copd"));
 //schema for a CDS hook
-const HookSchema = mongoose.model("Service", cdsServiceSchema, CDS_SERVICES || "cds-services");
+let CdsServiceModel ;//= mongoose.model("Service", cdsServiceSchema, CDS_SERVICES || "cds-services");
 
 //add all models to an array of Models
-let modelArray = [Template,Template_copd];
-let _conn;
+//let modelArray = [Template,Template_copd];
+let services_conn;
 
   /**
    *  Mongo utility to connect to client
@@ -57,34 +55,36 @@ let _conn;
 module.exports = {
   
   initDb : () => {
-    const _db = mongoose
-                .connect(url, options);
+   // const _db = mongoose.connect(url, options);
+       services_conn = mongoose.createConnection(url, options);
 
-     _conn = mongoose.connection;
-
-    _conn.on("error", () => {
-      logger.error.bind(logger, "Connection error");
+     //_conn = mongoose.connection;
+     CdsServiceModel = services_conn.model("Cds-service", cdsServiceSchema);
+    
+     services_conn.on("error", () => {
+      logger.error.bind(logger, "cds-services Connection error");
     });
-    _conn.once("open", () => console.log("db connection open"));
-    _conn.once("connected", () => {
-      console.log("Connection Established");
+    services_conn.once("open", () => console.log("cds-services db connection open"));
+    services_conn.once("cds-services connected", () => {
+      console.log("cds-services Connection Established");
     });
 
-    return _db;
+    return services_conn;
   },
 
-  modelArray,
+  //modelArray,
 
-  HookSchema,
+  HookSchema: CdsServiceModel,
   
   /***
    * @returns {mongoose.Connection}
    */
-  getConn : (collection) => {
-    return _conn;
+  getServicesConn : () => {
+    return services_conn;
   },
-  getModel : (path) => {
-    return mongoose.model("fetchTemplate", paramSchema, path);
+  getServicesModel : (conn) => {
+    //return Model for any hook where the hook id given in the route is the name of the collection on the DB
+    return 
   }
 }
 

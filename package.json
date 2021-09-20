@@ -18,6 +18,7 @@
     "url": "https://github.com/susoDominguez/cds_hooks_manager"
   },
   "dependencies": {
+    "arr-union": "^3.1.0",
     "array.prototype.flat": "^1.2.4",
     "axios": "^0.21.1",
     "cookie-parser": "~1.4.5",

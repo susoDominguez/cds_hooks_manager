@@ -17,8 +17,8 @@ const { initDb } = require('./database_modules/dbConnection_Mongoose');
 //create server
 const app = express();
 
-//init DB and Models
-initDb().then( () => logger.info('database initiated successfully')).catch( err => logger.info('Db not init: ' + err));
+//init cds-services DB
+//initDb().then( () => logger.info('cds-services database initiated successfully')).catch( err => logger.info('cds-services Db not init: ' + err));
 
 // view engine setup
 //environmental variables TODO: define later
