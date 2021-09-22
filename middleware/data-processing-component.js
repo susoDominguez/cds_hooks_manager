@@ -75,6 +75,7 @@ module.exports = {
     // to RHS argument array in the object (no return value req as it is pass-by-ref)
     applyActions(
       body,
+      actionsObj["argsResultList"],
       actionsObj["funListAction"],
       actionsObj["argsPathList"]
     );

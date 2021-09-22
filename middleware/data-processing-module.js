@@ -23,6 +23,7 @@ const {
   functName,
   labelTemplate,
   isAncestor_eq,
+  codeSyst,
 } = require("../database_modules/constants.js");
 const flat = require("array.prototype.flat");
 const {
@@ -40,9 +41,9 @@ const { SNOMEDCT } = process.env;
 ///////////////////////////////////////////////////////
 
 /**
- * add parameter and corresponding args to Map
+ * creates an object containing values and actions to be applied to values
  * @param {object} docObj context as taken from request
- *
+ * @returns {object} object containig values and functions to be applied to those values
  */
 function addFunctionsFromTemplateToArgsObject(docObj) {
   //get actions
@@ -157,20 +158,19 @@ function getDataPointValues(contextObj, docObj, argsPathList) {
 
     //if undefined, get the default value which could also be undefined or a JSONpath of the same type as the main one
     if (valueFromContext === undefined) {
+      //get default value (possibly undefined) and check whether it is also a path to data in a resource
+      let defaultValue = aPath[defaultVal];
 
-       //get default value (possibly undefined) and check whether it is also a path to data in a resource
-    let defaultValue = aPath[defaultVal];
+      // is it an array?
+      if (("" + defaultValue).trim().startsWith("["))
+        defaultValue = JSON.parse(defaultValue);
 
-    // is it an array?
-    if (("" + defaultValue).trim().startsWith("["))
-      defaultValue = JSON.parse(defaultValue);
-
-    //are we dealing with another JSONPath format? //TODO: Possibly add another property to confirm it is a JPath
-    let isDefaultValueJpath =
-      defaultValue !== undefined &&
-      !Array.isArray(defaultValue) &&
-      (("" + defaultValue).startsWith("context") ||
-        ("" + defaultValue).startsWith("prefetch"));
+      //are we dealing with another JSONPath format? //TODO: Possibly add another property to confirm it is a JPath
+      let isDefaultValueJpath =
+        defaultValue !== undefined &&
+        !Array.isArray(defaultValue) &&
+        (("" + defaultValue).startsWith("context") ||
+          ("" + defaultValue).startsWith("prefetch"));
 
       //if default is a path, apply Jsonpath otherwise return the value
       valueFromContext = isDefaultValueJpath
@@ -289,9 +289,7 @@ function typePathVal(typepath, value) {
  * @param {number} conceptId concept to be compared/relarted to, as given by the Fetch Template
  * @returns {boolean} is an ancestor or equal to the given concept Id?
  */
- async function isAncestorEq(schemeId, conceptIdList, conceptId) {
-  
-
+async function isAncestorEq(schemeId, conceptIdList, conceptId) {
   //find URL from schemeId
   let url;
   let postUrl = "";
@@ -311,40 +309,38 @@ function typePathVal(typepath, value) {
   //for each conceptId in List:
   for (let index = 0; index < conceptIdList.length; index++) {
     const concept = conceptIdList[index];
-    
+
     //check for equality
     if (concept === conceptId) {
-      return true
+      return true;
     } else {
-      //additional parts of the URL 
+      //additional parts of the URL
       switch (schemeId) {
         default:
-          postUrl =  "/"+ concept + "/ancestors";
+          postUrl = "/" + concept + "/ancestors";
           break;
       }
-      
     }
 
     let requestUrl = preUrl + url + postUrl;
     logger.info(requestUrl);
     let response;
     //if not equal, add HTTP request to list for parallel threading
-    try{
+    try {
       //fetch ancestors of conceptId in List
-      response = axios.get(requestUrl)
-  } catch(error){
-     
-     throw new ErrorHandler(500, error.message);
-  }
+      response = axios.get(requestUrl);
+    } catch (error) {
+      throw new ErrorHandler(500, error.message);
+    }
     requests.push(response);
   }
 
   let responses = [];
-  try{
-      //array containing ancestors for all conceptIds
-     responses = await axios.all(requests);
-  } catch(error){
-     throw new ErrorHandler(500, "responses-axios.all: " + error.message);
+  try {
+    //array containing ancestors for all conceptIds
+    responses = await axios.all(requests);
+  } catch (error) {
+    throw new ErrorHandler(500, "responses-axios.all: " + error.message);
   }
 
   //is conceptId an ancestor in List?
@@ -421,11 +417,12 @@ function findReferencesInContext(hookObj, listOfArgs, actObj, indexArr) {
 
 /*** Applies user defined functions or actions where all the arguments come from the CDS Hook document or when checking for ancestors.
  * Order of application matters. Note that findRef > user-defined functs > comparison > isAncestor_eq between hook data as arguments
- *  @param {object} hookObj hook context with resources. To be used on a reference find
+ * @param {object} hookObj hook context with resources. To be used on a reference find
+ * @param {object} argsResultList resultList with results as taken from DB. To be applied to isAncestor_eq
  * @param {array} funListAction array with functions
- * @param {array} listOfArgs array with  arguments
+ * @param {array} pathListVals array with  arguments
  */
-function applyActions(hookObj, funListAction, listOfArgs) {
+function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
   //if empty, there are no middle actions to be applied at this moment
   if (funListAction == []) return;
 
@@ -449,6 +446,7 @@ function applyActions(hookObj, funListAction, listOfArgs) {
 
     //list with indices for arguments. We expect at most 2 arguments
     let indexArr;
+
     if (
       actObj.hasOwnProperty(details) &&
       actObj[details].hasOwnProperty(pathListIndex)
@@ -475,86 +473,161 @@ function applyActions(hookObj, funListAction, listOfArgs) {
     ///begin with comparison between arguments. resulting boolean value is stored in first given argument, ie., lhs arg
     //the rhs argument must be nullified so that it does not show in the reply
     //then user-defined functions
-    if (funName === comparison && indexArr.length > 1) {
-      //comparison sign
-      const comparisonSymbol = actObj[details][compare];
-      //values possibly wrapped in singleton Array, remove for comparison
-      let lhsArg = listOfArgs[indexArr[0]];
-      let rhsArg = listOfArgs[indexArr[1]];
-      logger.info(
-        `LHS value is ${lhsArg} and RHS value is ${rhsArg} when comparing  data from indexes ${indexArr[0]} and ${indexArr[1]} respectively`
-      );
-      //To compare 2 values taken from the pathList, we expect at most one singleton array or a primitive value; otherwise it is an error
-      //if singleton array, fetch value else error
-      if (Array.isArray(lhsArg) && lhsArg.length < 2) {
-        lhsArg = lhsArg[0];
-      } else {
-        //if it is an array then it must have size greater than 2
-        if (Array.isArray(lhsArg))
-          throw handleError(
-            500,
-            `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
-              lhsArg
-            )} on its LHS parameter (array). Check Request body or JSONpath`
-          );
-      }
-      if (Array.isArray(rhsArg) && rhsArg.length < 2) {
-        rhsArg = rhsArg[0];
-      } else {
-        //if it is an array then it must have size greater than 2
-        if (Array.isArray(rhsArg))
+    switch (funName) {
+      case isAncestor_eq:
+        //fetch all conceptId values from resultList:
+        //get resultListIndex
+        let indx, codeSystId;
+        if (
+          actObj.hasOwnProperty(details) &&
+          actObj[details].hasOwnProperty(resultArgListIndex) &&
+          actObj[details].hasOwnProperty(codeSyst)
+        ) {
+          //index over resultList array in Fetch document
+          indx = actObj[details][resultArgListIndex];
+          codeSystId = actObj[details][codeSyst];
+        } else {
           throw new ErrorHandler(
             500,
-            `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
-              rhsArg
-            )} on its LHS parameter (array). Check Request body or JSONpath`
+            `property ${resultArgListIndex} is not found in object ActionList on DB Fetch document`
           );
-      }
+        }
+        //use resultListIndex value to obtain conceptIds from resultList using jsonata
+        //path to values using index
+        let jsonPath = "$.argList[" + indx + "]";
+        //find values. Returns an array. Flatten to make sure it is not an arr of arrs
+        let response = flat(getDataFromContext(jsonPath, argsResultList));
+        //for each conceptId, apply isAncestor_eq
 
-      //notice it removes the array wrapper when updating with result
-      switch (comparisonSymbol) {
-        case "eq":
-          newVal = lhsArg === rhsArg;
-          //TODO: if ofType Date, lhsArg.getTime() === rhsArg.getTime()
-          break;
-        case "lt":
-          newVal = lhsArg < rhsArg;
-          break;
-        case "lte":
-          newVal = lhsArg <= rhsArg;
-          break;
-        case "gt":
-          newVal = lhsArg > rhsArg;
-          break;
-        case "gte":
-          newVal = lhsArg >= rhsArg;
-          break;
-        case "ne":
-          newVal = lhsArg !== rhsArg;
-          //TODO: if ofType Date, lhsArg.getTime() !== rhsArg.getTime()
-          break;
-        // TODO: case "in":
-        // newVal = (Array.isArray(lhsArg)) ?
-      }
-      //the non-updated argument(s) must be removed so it does not show as a result
-      //listOfArgs[indexArr[1]] = undefined;
-    } else {
-      //REFERENCE FINDER//
-      //if a reference finder action, the argument is expected to be a list of references of sort 'ResourceType/Id'
-      if (funName === findRef) {
+        let output = pathListVals[indexArr[0]];
+        //isAncestor_eq expects a list of conceptIds to check
+        let conceptIdList = new Array();
+        if (Array.isArray(output)) {
+          conceptIdList = output;
+        } else {
+          conceptIdList.push(output);
+        }
+
+        let responseArr = new Array();
+        response.forEach((conceptId) => {
+          try {
+            let boolResult = isAncestorEq(
+              codeSystId,
+              conceptIdList,
+              "" + conceptId
+            );
+            responseArr.push(boolResult);
+          } catch (err) {
+            throw new ErrorHandler(500, "applyActions: " + err.message);
+          }
+        });
+        //await all
+        try {
+          let isAncestorResultList = await.all(responseArr);
+        } catch (err) {
+          throw new ErrorHandler(
+            500,
+            "applyActions:isAncestorResultList: " + err.message
+          );
+        }
+        //newVal of Array type
+        newVal = new Array();
+
+        //for each truth value, push the conceptId to newVal
+        for (let index = 0; index < isAncestorResultList.length; index++) {
+          const boolVal = isAncestorResultList[index];
+          const conceptId = conceptIdList[index];
+          if (boolVal) newVal.push(conceptId);
+        }
+        //TODO: when evaluating, use inLSH to check with conceptIds were ancestors
+        break;
+      case findRef:
         //find Resources in context from a list of given references
-        newVal = findReferencesInContext(hookObj, listOfArgs, actObj, indexArr);
-      } else {
-        //name of user-defined functions. Extend by adding label and how to apply function
+        newVal = findReferencesInContext(
+          hookObj,
+          pathListVals,
+          actObj,
+          indexArr
+        );
+        break;
+      case comparison:
+        //only if 2 args are given
+        if (indexArr.length <= 1) break;
+        //comparison sign
+        const comparisonSymbol = actObj[details][compare];
+        //values possibly wrapped in singleton Array, remove for comparison
+        let lhsArg = pathListVals[indexArr[0]];
+        let rhsArg = pathListVals[indexArr[1]];
+        logger.info(
+          `LHS value is ${lhsArg} and RHS value is ${rhsArg} when comparing  data from indexes ${indexArr[0]} and ${indexArr[1]} respectively`
+        );
+        //To compare 2 values taken from the pathList, we expect at most one singleton array or a primitive value; otherwise it is an error
+        //if singleton array, fetch value else error
+        if (Array.isArray(lhsArg) && lhsArg.length < 2) {
+          lhsArg = lhsArg[0];
+        } else {
+          //if it is an array then it must have size greater than 2
+          if (Array.isArray(lhsArg))
+            throw handleError(
+              500,
+              `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
+                lhsArg
+              )} on its LHS parameter (array). Check Request body or JSONpath`
+            );
+        }
+        if (Array.isArray(rhsArg) && rhsArg.length < 2) {
+          rhsArg = rhsArg[0];
+        } else {
+          //if it is an array then it must have size greater than 2
+          if (Array.isArray(rhsArg))
+            throw new ErrorHandler(
+              500,
+              `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
+                rhsArg
+              )} on its LHS parameter (array). Check Request body or JSONpath`
+            );
+        }
+
+        //notice it removes the array wrapper when updating with result
+        switch (comparisonSymbol) {
+          case "eq":
+            newVal = lhsArg === rhsArg;
+            //TODO: if ofType Date, lhsArg.getTime() === rhsArg.getTime()
+            break;
+          case "lt":
+            newVal = lhsArg < rhsArg;
+            break;
+          case "lte":
+            newVal = lhsArg <= rhsArg;
+            break;
+          case "gt":
+            newVal = lhsArg > rhsArg;
+            break;
+          case "gte":
+            newVal = lhsArg >= rhsArg;
+            break;
+          case "ne":
+            newVal = lhsArg !== rhsArg;
+            //TODO: if ofType Date, lhsArg.getTime() !== rhsArg.getTime()
+            break;
+          // TODO: case "in":
+          // newVal = (Array.isArray(lhsArg)) ?
+        }
+        //the non-updated argument(s) must be removed so it does not show as a result
+        //listOfArgs[indexArr[1]] = undefined;
+        break;
+      default:
+        ///name of user-defined functions. Extend by adding label and how to apply function//
+
         switch (funName) {
           case "getYearsFromNow":
             //this case has only one arg so index value has to be at index 0
-            newVal = getYearsFromNow(listOfArgs[indexArr[0]]);
+            newVal = getYearsFromNow(pathListVals[indexArr[0]]);
             break;
 
           case "calculate_age":
             //this case has only one arg so index value has to be at index 0
-            newVal = calculate_age(listOfArgs[indexArr[0]]);
+            newVal = calculate_age(pathListVals[indexArr[0]]);
             break;
 
           case "arr_diff_nonSymm":
@@ -562,26 +635,27 @@ function applyActions(hookObj, funListAction, listOfArgs) {
             let arr1 = new Array();
             let arr2 = new Array();
 
-            if (!Array.isArray(listOfArgs[indexArr[0]])) {
-              arr1.push(listOfArgs[indexArr[0]]);
+            if (!Array.isArray(pathListVals[indexArr[0]])) {
+              arr1.push(pathListVals[indexArr[0]]);
             } else {
-              arr1 = listOfArgs[indexArr[0]];
+              arr1 = pathListVals[indexArr[0]];
             }
 
-            if (!Array.isArray(listOfArgs[indexArr[1]])) {
-              arr2.push(listOfArgs[indexArr[1]]);
+            if (!Array.isArray(pathListVals[indexArr[1]])) {
+              arr2.push(pathListVals[indexArr[1]]);
             } else {
-              arr2 = listOfArgs[indexArr[1]];
+              arr2 = pathListVals[indexArr[1]];
             }
 
             newVal = arr_diff_nonSymm(arr1, arr2);
-          //the non-updated argument(s) must be removed so it does not show as a result
-          //listOfArgs[indexArr[1]] = undefined;
+            //the non-updated argument(s) must be removed so it does not show as a result
+            //listOfArgs[indexArr[1]] = undefined;
+            break;
         }
-      }
-    }
+    } //endOfSwitch
+
     //replace argument with resulting value
-    listOfArgs[indexArr[0]] = newVal;
+    pathListVals[indexArr[0]] = newVal;
   } //endOfLoop
 
   //arguments are arrays so pass-by-ref, hence no need to return changes
@@ -847,5 +921,5 @@ module.exports = {
   getOutcomeList,
   applyActions,
   addFunctionsFromTemplateToArgsObject,
-  isAncestorEq
+  isAncestorEq,
 };
