@@ -2,11 +2,11 @@ var express = require("express");
 var router = express.Router();
 const {
 } = process.env;
-var { fetchParams } = require("../middleware/data-processing-component");
-var { getCdsServices, getCdsServicesByCig } = require("../database_modules/service_finders");
-
-
+const { fetchParams } = require("../middleware/data-processing-component");
+const { isAncestorEq } = require("../middleware/data-processing-module");
+const { getCdsServices, getCdsServicesByCig } = require("../database_modules/service_finders");
 const asyncMiddleware = require("../lib/asyncMiddleware");
+const logger = require('../config/winston');
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -20,14 +20,10 @@ router.get("/cigModel/:cigId",
 
 /* POST provide personalised care plan with no argumentation */
 router.post(
-  '/:hook',
+  '/:hook/cigModel/:cigId',
   asyncMiddleware(fetchParams),
-  //asyncMiddleware(fetchTmrData),
- // asyncMiddleware(aggregateData),
-  (req, res, next) => {
-      //send CDS data, wrapped in CDS Card, back to EHR client
-      res.status(200).json(res.locals.cdsData); 
-  }
+  //send CDS data, wrapped in CDS Card, back to EHR client
+     //res.status(200).json(result)
 );
 
 module.exports = router;

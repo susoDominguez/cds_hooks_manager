@@ -12,7 +12,7 @@ const xss = require('xss-clean');
 // Environment constiables
 require('dotenv').config();
 const cdsServicesRouter = require('./routes/cds-hooks-router.js');
-const { initDb } = require('./database_modules/dbConnection_Mongoose');
+//const { initDb } = require('./database_modules/dbConnection_Mongoose');
 
 //create server
 const app = express();

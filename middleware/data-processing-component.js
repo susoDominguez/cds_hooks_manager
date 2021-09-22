@@ -1,14 +1,10 @@
 "use strict";
 
 const {
-  getPathValueAndActions,
-  getOutcomeList,
-  applyActions,
+  getDataPointValues,
+  getOutcomeList, applyActions, addFunctionsFromTemplateToArgsObject
 } = require("./data-processing-module");
-const {
-  getModel,
-  HookSchema,
-} = require("../database_modules/dbConnection_Mongoose");
+const {getModelbyCig} = require("../database_modules/models")
 const logger = require("../config/winston");
 const { ErrorHandler } = require("../lib/errorHandler");
 const {
@@ -31,13 +27,21 @@ module.exports = {
    * @param {function} next callback
    */
   fetchParams: async function (req, res, next) {
-    //GET SPECIFIC HOOK CONTEXT//
 
+    //GT SPECIFIC HOOK CONTEXT//
   //hook id extracted from route
-  let hookId = req.params.hookId
+  let hookId = req.params.hook
+  logger.info("hookId is " + hookId);
 
-  //instantiate Mongoose model for a particular data document which it is identified via its hook id
-  const Model = getModel(hookId);
+  //CIG Model id extracted from route
+  let cigId = req.params.cigId
+  logger.info("cigId is " + cigId);
+
+   //hook context
+   let body = req.body;
+
+  //instantiate Mongoose model for a particular DB document which it is identified via its hook id
+  const Model = getModelbyCig(cigId,hookId);
 
   //if collection name is not found, throw error
   if (!Model)
@@ -50,7 +54,7 @@ module.exports = {
 
   //set as array for CIGs involved in this operation. To be shared with the TMR functionality module
   //default: 5 CIGs involved
-  let cigInvolvedList = new Array();
+  let requiredCIGs = new Array();
 
   //retrieve all data for querying//
 
@@ -61,13 +65,15 @@ module.exports = {
         if (paramKey === undefined)
           throw new ErrorHandler(500,`Parameter label = ${paramName} is missing from template`);
 
-    //create object with arguments and actions to be applied
+    //create object with arguments and their applicable actions
     let actionsObj = addFunctionsFromTemplateToArgsObject(doc);
-    //obtain data points by extraction using JSOn path strings and add them to the actions object
-    getDataPointValues(body, doc,actionsObj['argsPathList']);
 
-    //apply functions first to RHS argument array in the object (no return value req as it is pass-by-ref)
-    await applyActions(
+    //obtain data points by extraction using JSOn path strings and add them to the actions object
+    getDataPointValues(body, doc, actionsObj['argsPathList']);
+
+    //apply first user-defined functions, comparisons between arguments and ancestors check,
+    // to RHS argument array in the object (no return value req as it is pass-by-ref)
+    applyActions(
       body,
       actionsObj["funListAction"],
       actionsObj["argsPathList"]
@@ -106,7 +112,7 @@ module.exports = {
           );
         //add new CIG to array of CIGs avoiding repetition
         for (const cig of cigList) {
-          if (!cigInvolvedList.includes(cig)) cigInvolvedList.push(cig);
+          if (!requiredCIGs.includes(cig)) requiredCIGs.push(cig);
         }
         //add property and corresponding value to the result object before inserting into MAP
         result[ciglist] = cigList;
@@ -117,13 +123,13 @@ module.exports = {
     paramMap.set(paramKey, result);
     logger.info(`param result is: ${paramKey} => ${JSON.stringify(paramMap.get(paramKey))}`);
   }
+  
+  //Parameters to transfer to next middleware
+  res.locals.requiredCIGs = requiredCIGs; //possibly empty if not part of router to extract CIG data
+  res.locals.paramsMap = paramMap;
 
-  //pass data to next middleware into the requirement obj
-  res.locals.cigInvolvedList = cigInvolvedList; //possibly empty if not part of router to extract CIG data
-  res.locals.parametersMap = paramMap;
-   
   //call next middleware
   next();
   }
-
+ 
 };

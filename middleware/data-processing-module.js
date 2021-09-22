@@ -1,7 +1,6 @@
 "use strict";
-const arrayUnion = require('arr-union');
+
 const jsonata = require("jsonata");
-const axios = require("axios");
 const {
   paramName,
   functLabel,
@@ -24,63 +23,32 @@ const {
   functName,
   labelTemplate,
   isAncestor_eq,
-  codeSyst,
 } = require("../database_modules/constants.js");
 const flat = require("array.prototype.flat");
 const {
   arr_diff_nonSymm,
   calculate_age,
   getYearsFromNow,
-} = require("./user-defined-functions");
+} = require("../lib/user-defined-functions");
 const { ErrorHandler } = require("../lib/errorHandler");
 const logger = require("../config/winston");
 const { Model } = require("mongoose");
+const axios = require("axios");
+const qs = require("querystring");
 const { SNOMEDCT } = process.env;
 
 ///////////////////////////////////////////////////////
 
-//this array contains strings corresponding to concepts relationships used as functions
-const conceptRelationshipsArr = [isAncestor_eq];
-
-/**
- * Function to check whether a concept is derived from another
- * @param {string} relationType type of relationship to search between main and possibly derived concepts
- * @param {any} conceptId concept ID or list of Ids to match or relate
- * @returns {Promise[]} list of Promises
- */
-  async function findAncestors(
-  terminology,
-  conceptIdList
-) {
-  let output;
-
-  //terminology is fixed to snomed CT for now
-  if (terminology === "SCT") {
-    output =  await axios.all( conceptIdList.map( conceptId => axios.get("https://" + SNOMEDCT + conceptId + "ancestors") ) );
-  }
-  //combine arrays of objects
-  let temp = output.map( arr => {
-    //return conceptId from each obj in sub array
-    arr.map( obj => obj.conceptId)
-  });
-  //add list of conceptIds to output as there could be a match. Add it to the front of array to avoid searching in ancestors for equality case
-  temp.unshift(conceptIdList);
-  //combine arrays and remove duplicates
-  output = arrayUnion(temp);
-
-  return  output;
-}
-
 /**
  * add parameter and corresponding args to Map
- * @param {object} contextObj context as taken from request
+ * @param {object} docObj context as taken from request
  *
  */
 function addFunctionsFromTemplateToArgsObject(docObj) {
   //get actions
   let actionArray = docObj[actionList];
 
-  //check we are working w array
+  //check we are working w/array
   if (!Array.isArray(actionArray))
     throw new ErrorHandler(
       500,
@@ -89,27 +57,25 @@ function addFunctionsFromTemplateToArgsObject(docObj) {
 
   /// HANDLE ACTIONS ///
 
-  //filter actions: function and findConceptRelationships (goes first), comparison(second) and arra_eq (goes last)
+  //filter actions: function (goes first), comparison(second) and arra_eq (goes last)
   //object to be returned as output of this function
   let argVals = {
     funListAction: actionArray.filter(
       (obj) =>
         obj[action] === functLabel ||
         obj[action] === findRef ||
-        conceptRelationshipsArr.includes(obj[action]) ||
+        obj[action] === isAncestor_eq ||
         (obj[action] === comparison && obj[details][pathListIndex].length > 1)
     ),
     //filter only comparisons with the resultList; they have at most one argument form argList
-    //findAncestors is also added as it requires comparison with results
     actions: actionArray.filter(
       (obj) =>
-        //not equal to any of the above elements
-        obj[action] !== functLabel &&
-        obj[action] !== findRef &&
-        obj[action] !== comparison &&
+        //not equal to any of the above elements apart from isAncestor_eq
+        (obj[action] !== functLabel &&
+          obj[action] !== findRef &&
+          obj[action] !== comparison) ||
         //or if it is a comparison, it has more than one argument
-        obj[action] === comparison &&
-        obj[details][pathListIndex].length < 2
+        (obj[action] === comparison && obj[details][pathListIndex].length < 2)
     ),
     //list of arguments. To be extracted from clinical context as part of request
     argsPathList: new Array(),
@@ -139,7 +105,7 @@ function addFunctionsFromTemplateToArgsObject(docObj) {
 function getDataPointValues(contextObj, docObj, argsPathList) {
   //three stages: path, actions-functions and action-results.
   //First fetch parameters, type properly, apply functions and add to MAP.
-  //THen apply to already existing MAP object the actions for comparisons to find results
+  //Then apply to already existing MAP object the actions for comparisons to find results
   //or the existing result if not comparison is needed
 
   //Array containing list of objects with data points to be extracted:
@@ -189,7 +155,10 @@ function getDataPointValues(contextObj, docObj, argsPathList) {
         ? getDataFromContext(jpathStr, contextObj)
         : undefined;
 
-    //get default value (possibly undefined) and check whether it is also a path to data in a resource
+    //if undefined, get the default value which could also be undefined or a JSONpath of the same type as the main one
+    if (valueFromContext === undefined) {
+
+       //get default value (possibly undefined) and check whether it is also a path to data in a resource
     let defaultValue = aPath[defaultVal];
 
     // is it an array?
@@ -203,8 +172,6 @@ function getDataPointValues(contextObj, docObj, argsPathList) {
       (("" + defaultValue).startsWith("context") ||
         ("" + defaultValue).startsWith("prefetch"));
 
-    //if undefined, get the default value which could also be undefined or a JSONpath of the same type as the main one
-    if (valueFromContext === undefined) {
       //if default is a path, apply Jsonpath otherwise return the value
       valueFromContext = isDefaultValueJpath
         ? getDataFromContext(defaultValue, contextObj)
@@ -234,23 +201,21 @@ function getDataPointValues(contextObj, docObj, argsPathList) {
       )}`
     );
 
-    /// VALUE IS ALREADY EXTRACTED ///
+    /// DATA IS ALREADY EXTRACTED ///
 
     //typing the extracted data
     valueFromContext = typePathVal(dataType, valueFromContext);
 
-    //add value to list after potentially applying a function on it. Remove from arra wrapping if required
+    //add value to list after potentially applying a function on it.
     argsPathList.push(valueFromContext);
   }
-
-  //return object with actions and arguments
-  //return argVals;
 }
 
 /**
- *
+ * find and extract data from context using JSONATA
  * @param {string} jsonpath path to values
  * @param {object} contextObj hook context
+ * @returns {object} output
  */
 function getDataFromContext(jsonpath, contextObj) {
   if (jsonpath === undefined || jsonpath === null || jsonpath.trim() === "")
@@ -258,6 +223,7 @@ function getDataFromContext(jsonpath, contextObj) {
 
   //compiled path expression
   let expression = jsonata(jsonpath);
+
   //evaluate expression against JSON structure
   return expression.evaluate(contextObj);
 }
@@ -318,9 +284,89 @@ function typePathVal(typepath, value) {
 }
 
 /**
+ * @param {Array} schemeId clinical scheme to be applied. Refers to an URL location (SNOMEDCT by default)
+ * @param {Array} conceptIdList List of concept Ids extracted from the hook object
+ * @param {number} conceptId concept to be compared/relarted to, as given by the Fetch Template
+ * @returns {boolean} is an ancestor or equal to the given concept Id?
+ */
+ async function isAncestorEq(schemeId, conceptIdList, conceptId) {
+  
+
+  //find URL from schemeId
+  let url;
+  let postUrl = "";
+  let preUrl = "https://";
+  let jsonPath = "";
+
+  //array containing http requests
+  let requests = new Array();
+
+  switch (schemeId) {
+    default:
+      url = SNOMEDCT;
+      jsonPath = conceptId + " in $[].conceptId";
+      break;
+  }
+
+  //for each conceptId in List:
+  for (let index = 0; index < conceptIdList.length; index++) {
+    const concept = conceptIdList[index];
+    
+    //check for equality
+    if (concept === conceptId) {
+      return true
+    } else {
+      //additional parts of the URL 
+      switch (schemeId) {
+        default:
+          postUrl =  "/"+ concept + "/ancestors";
+          break;
+      }
+      
+    }
+
+    let requestUrl = preUrl + url + postUrl;
+    logger.info(requestUrl);
+    let response;
+    //if not equal, add HTTP request to list for parallel threading
+    try{
+      //fetch ancestors of conceptId in List
+      response = axios.get(requestUrl)
+  } catch(error){
+     
+     throw new ErrorHandler(500, error.message);
+  }
+    requests.push(response);
+  }
+
+  let responses = [];
+  try{
+      //array containing ancestors for all conceptIds
+     responses = await axios.all(requests);
+  } catch(error){
+     throw new ErrorHandler(500, "responses-axios.all: " + error.message);
+  }
+
+  //is conceptId an ancestor in List?
+  for (let index = 0; index < responses.length; index++) {
+    const response = responses[index];
+    //apply jsonata patter for given schemeId
+    let boolResult = getDataFromContext(jsonPath, response);
+    logger.info(boolResult);
+    //if true, return else continue with next conceptId in List
+    if (boolResult === true) return true;
+  }
+
+  //if not found return false
+  return false;
+}
+
+/**
  *
  * @param {object} hookObj context as taken from request object
+ * @param {object} listOfArgs list of References to find
  * @param {object} actObj object findRef action definition from Fetch Template
+ * @param {object} indexArr internal position within actions List
  * @returns array
  */
 function findReferencesInContext(hookObj, listOfArgs, actObj, indexArr) {
@@ -334,10 +380,10 @@ function findReferencesInContext(hookObj, listOfArgs, actObj, indexArr) {
   )
     throw handleError(
       500,
-      `property ${details} is missing  property ${Jpath} or ${typePath} in object ActionList on template`
+      `property ${details} is missing  property ${xpath} or ${typePath} in object ActionList on template`
     );
 
-  //xpath is expected to be written with 2 placeholders: var1 and var2
+  //JSONpath is expected to be written with 2 placeholders: var1 and var2
   let xPathStr = actObj[details][xpath] || undefined;
   let typing = actObj[details][typePath] || undefined;
 
@@ -373,24 +419,21 @@ function findReferencesInContext(hookObj, listOfArgs, actObj, indexArr) {
   return typePathVal(typing, tempList);
 }
 
-/*** Applies user defined functions or actions where all the arguments come from the CDS Hook.
- * Order of application matters. Note that findRef > user-defined functs > comparison > concept relations between hook data as arguments
- * @param {object} hookObj hook context with resources. To be used on a reference find
+/*** Applies user defined functions or actions where all the arguments come from the CDS Hook document or when checking for ancestors.
+ * Order of application matters. Note that findRef > user-defined functs > comparison > isAncestor_eq between hook data as arguments
+ *  @param {object} hookObj hook context with resources. To be used on a reference find
  * @param {array} funListAction array with functions
  * @param {array} listOfArgs array with  arguments
  */
-async function applyActions(hookObj, funListAction, listOfArgs) {
+function applyActions(hookObj, funListAction, listOfArgs) {
   //if empty, there are no middle actions to be applied at this moment
   if (funListAction == []) return;
-
-  ///
 
   //apply mid-process action to values in list of arguments
   for (const actObj of funListAction) {
     //name of function
     let funName;
-
-    //update var with name of function
+    //check for properties action and details
     if (actObj.hasOwnProperty(action) && actObj.hasOwnProperty(details)) {
       //if it is labelled as function, use the function name given in details property
       funName =
@@ -410,6 +453,7 @@ async function applyActions(hookObj, funListAction, listOfArgs) {
       actObj.hasOwnProperty(details) &&
       actObj[details].hasOwnProperty(pathListIndex)
     ) {
+      //index over pathlist array in Fetch document
       indexArr = actObj[details][pathListIndex];
     } else {
       throw new ErrorHandler(
@@ -425,146 +469,119 @@ async function applyActions(hookObj, funListAction, listOfArgs) {
         `MongoDb error: actionList has issues with a function on the MongoDb. Check details of function ${funName}.`
       );
 
-    ///
-    //argument on the LHS
-    let lhsArg = listOfArgs[indexArr[0]];
-    ///
     //this var will contain the resulting value to replace the initial arguments
     let newVal;
-    ///
 
-    ///begin with relationships and next comparison between arguments. resulting boolean value is stored in first given argument, ie., lhs arg
+    ///begin with comparison between arguments. resulting boolean value is stored in first given argument, ie., lhs arg
     //the rhs argument must be nullified so that it does not show in the reply
     //then user-defined functions
-
-    if (conceptRelationshipsArr.includes(funName)) {
-      //check a terminology has been added to the input in the data document
-      if (!actObj[details].hasOwnProperty(codeSyst))
-        return new ErrorHandler(
-          500,
-          "property codeSystem is missing in data document with action " +
-            funName
-        );
-        //code system -fixed to SCT at the moment-
-        let terminology = actObj[details][codeSyst];     
-         //if it is not an array, create it as such.
-         let conceptIdList = !Array.isArray(lhsArg)? new Array(lhsArg): lhsArg; 
-        //returns a list of Promises. //TODO: await here or right before using it in the last step?
-        //concat args with results as well as combining results intoone single array with no reps
-        newVal = await findAncestors(terminology, conceptIdList);
-    } else {
-      if (funName === comparison && indexArr.length > 1) {
-        //comparison sign
-        const comparisonSymbol = actObj[details][compare];
-        //values possibly wrapped in singleton Array, remove for comparison
-        let rhsArg = listOfArgs[indexArr[1]];
-        logger.info(
-          `LHS value is ${lhsArg} and RHS value is ${rhsArg} when comparing  data from indexes ${indexArr[0]} and ${indexArr[1]} respectively`
-        );
-        //To compare 2 values taken from the pathList, we expect at most one singleton array or a primitive value; otherwise it is an error
-        //if singleton array, fetch value else error
-        if (Array.isArray(lhsArg) && lhsArg.length < 2) {
-          lhsArg = lhsArg[0];
-        } else {
-          //if it is an array then it must have size greater than 2
-          if (Array.isArray(lhsArg))
-            throw handleError(
-              500,
-              `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
-                lhsArg
-              )} on its LHS parameter (array). Check Request body or JSONpath`
-            );
-        }
-        if (Array.isArray(rhsArg) && rhsArg.length < 2) {
-          rhsArg = rhsArg[0];
-        } else {
-          //if it is an array then it must have size greater than 2
-          if (Array.isArray(rhsArg))
-            throw new ErrorHandler(
-              500,
-              `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
-                rhsArg
-              )} on its LHS parameter (array). Check Request body or JSONpath`
-            );
-        }
-
-        //notice it removes the array wrapper when updating with result
-        switch (comparisonSymbol) {
-          case "eq":
-            newVal = lhsArg === rhsArg;
-            //TODO: if ofType Date, lhsArg.getTime() === rhsArg.getTime()
-            break;
-          case "lt":
-            newVal = lhsArg < rhsArg;
-            break;
-          case "lte":
-            newVal = lhsArg <= rhsArg;
-            break;
-          case "gt":
-            newVal = lhsArg > rhsArg;
-            break;
-          case "gte":
-            newVal = lhsArg >= rhsArg;
-            break;
-          case "ne":
-            newVal = lhsArg !== rhsArg;
-            //TODO: if ofType Date, lhsArg.getTime() !== rhsArg.getTime()
-            break;
-          // TODO: case "in":
-          // newVal = (Array.isArray(lhsArg)) ?
-        }
-        //the non-updated argument(s) must be removed so it does not show as a result
-        //listOfArgs[indexArr[1]] = undefined;
+    if (funName === comparison && indexArr.length > 1) {
+      //comparison sign
+      const comparisonSymbol = actObj[details][compare];
+      //values possibly wrapped in singleton Array, remove for comparison
+      let lhsArg = listOfArgs[indexArr[0]];
+      let rhsArg = listOfArgs[indexArr[1]];
+      logger.info(
+        `LHS value is ${lhsArg} and RHS value is ${rhsArg} when comparing  data from indexes ${indexArr[0]} and ${indexArr[1]} respectively`
+      );
+      //To compare 2 values taken from the pathList, we expect at most one singleton array or a primitive value; otherwise it is an error
+      //if singleton array, fetch value else error
+      if (Array.isArray(lhsArg) && lhsArg.length < 2) {
+        lhsArg = lhsArg[0];
       } else {
-        //REFERENCE FINDER//
-        //if a reference finder action, the argument is expected to be a list of references of sort 'ResourceType/Id'
-        if (funName === findRef) {
-          //find Resources in context from a list of given references
-          newVal = findReferencesInContext(
-            hookObj,
-            listOfArgs,
-            actObj,
-            indexArr
+        //if it is an array then it must have size greater than 2
+        if (Array.isArray(lhsArg))
+          throw handleError(
+            500,
+            `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
+              lhsArg
+            )} on its LHS parameter (array). Check Request body or JSONpath`
           );
-        } else {
-          //name of user-defined functions. Extend by adding label and how to apply function
-          switch (funName) {
-            case "getYearsFromNow":
-              //this case has only one arg so index value has to be at index 0
-              newVal = getYearsFromNow(lhsArg);
-              break;
+      }
+      if (Array.isArray(rhsArg) && rhsArg.length < 2) {
+        rhsArg = rhsArg[0];
+      } else {
+        //if it is an array then it must have size greater than 2
+        if (Array.isArray(rhsArg))
+          throw new ErrorHandler(
+            500,
+            `A comparison action from template DB has unexpectedly found more than 1 argument: ${JSON.stringify(
+              rhsArg
+            )} on its LHS parameter (array). Check Request body or JSONpath`
+          );
+      }
 
-            case "calculate_age":
-              //this case has only one arg so index value has to be at index 0
-              newVal = calculate_age(lhsArg);
-              break;
+      //notice it removes the array wrapper when updating with result
+      switch (comparisonSymbol) {
+        case "eq":
+          newVal = lhsArg === rhsArg;
+          //TODO: if ofType Date, lhsArg.getTime() === rhsArg.getTime()
+          break;
+        case "lt":
+          newVal = lhsArg < rhsArg;
+          break;
+        case "lte":
+          newVal = lhsArg <= rhsArg;
+          break;
+        case "gt":
+          newVal = lhsArg > rhsArg;
+          break;
+        case "gte":
+          newVal = lhsArg >= rhsArg;
+          break;
+        case "ne":
+          newVal = lhsArg !== rhsArg;
+          //TODO: if ofType Date, lhsArg.getTime() !== rhsArg.getTime()
+          break;
+        // TODO: case "in":
+        // newVal = (Array.isArray(lhsArg)) ?
+      }
+      //the non-updated argument(s) must be removed so it does not show as a result
+      //listOfArgs[indexArr[1]] = undefined;
+    } else {
+      //REFERENCE FINDER//
+      //if a reference finder action, the argument is expected to be a list of references of sort 'ResourceType/Id'
+      if (funName === findRef) {
+        //find Resources in context from a list of given references
+        newVal = findReferencesInContext(hookObj, listOfArgs, actObj, indexArr);
+      } else {
+        //name of user-defined functions. Extend by adding label and how to apply function
+        switch (funName) {
+          case "getYearsFromNow":
+            //this case has only one arg so index value has to be at index 0
+            newVal = getYearsFromNow(listOfArgs[indexArr[0]]);
+            break;
 
-            case "arr_diff_nonSymm":
-              //make sure they are both arrays
-              let arr1 = new Array();
-              let arr2 = new Array();
+          case "calculate_age":
+            //this case has only one arg so index value has to be at index 0
+            newVal = calculate_age(listOfArgs[indexArr[0]]);
+            break;
 
-              if (!Array.isArray(lhsArg)) {
-                arr1.push(lhsArg);
-              } else {
-                arr1 = lhsArg;
-              }
+          case "arr_diff_nonSymm":
+            //make sure they are both arrays
+            let arr1 = new Array();
+            let arr2 = new Array();
 
-              if (!Array.isArray(listOfArgs[indexArr[1]])) {
-                arr2.push(listOfArgs[indexArr[1]]);
-              } else {
-                arr2 = listOfArgs[indexArr[1]];
-              }
+            if (!Array.isArray(listOfArgs[indexArr[0]])) {
+              arr1.push(listOfArgs[indexArr[0]]);
+            } else {
+              arr1 = listOfArgs[indexArr[0]];
+            }
 
-              newVal = arr_diff_nonSymm(arr1, arr2);
-            //the non-updated argument(s) must be removed so it does not show as a result
-            //listOfArgs[indexArr[1]] = undefined;
-          }
+            if (!Array.isArray(listOfArgs[indexArr[1]])) {
+              arr2.push(listOfArgs[indexArr[1]]);
+            } else {
+              arr2 = listOfArgs[indexArr[1]];
+            }
+
+            newVal = arr_diff_nonSymm(arr1, arr2);
+          //the non-updated argument(s) must be removed so it does not show as a result
+          //listOfArgs[indexArr[1]] = undefined;
         }
       }
-      //replace argument with resulting value
-      listOfArgs[indexArr[0]] = newVal;
     }
+    //replace argument with resulting value
+    listOfArgs[indexArr[0]] = newVal;
   } //endOfLoop
 
   //arguments are arrays so pass-by-ref, hence no need to return changes
@@ -637,9 +654,6 @@ async function getOutcomeList(
 
     //fetch their indices first:
 
-    //get the name of the operation
-    let actionName = actionObj[action];
-
     //by definition, resultArgListIndex is not of array type
     let rhsArgIndex = actionObj[details][resultArgListIndex];
 
@@ -655,7 +669,6 @@ async function getOutcomeList(
     //check whether we are working with an element or a singleton array
     let isSingletonLHSValue =
       Array.isArray(aLHSVal) && aLHSVal.length < 2 ? true : false;
-
     //if the argument is wrap in a singleton array, unwrap
     aLHSVal = isSingletonLHSValue ? aLHSVal[0] : aLHSVal;
 
@@ -668,6 +681,9 @@ async function getOutcomeList(
         aLHSVal
       )}`
     );
+
+    //get the name of the operation
+    let actionName = actionObj[action];
 
     //If name of the operation is comparison, replace by the comparison operation sign
     if (actionName === comparison) {
@@ -771,10 +787,7 @@ async function getOutcomeList(
             ],
           };
         }
-        break;
 
-      case isDescendant_strict:
-        compObj = {};
         break;
     }
     //add elemMatch to object
@@ -833,5 +846,6 @@ module.exports = {
   getDataPointValues,
   getOutcomeList,
   applyActions,
-  addFunctionsFromTemplateToArgsObject
+  addFunctionsFromTemplateToArgsObject,
+  isAncestorEq
 };

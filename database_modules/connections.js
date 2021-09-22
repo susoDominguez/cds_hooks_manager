@@ -4,11 +4,9 @@ const mongoose = require('mongoose');
 const logger = require("../config/winston");
 
 const {
-    MONGODB_CDS_SERVICES_HOST,
-    MONGODB_CDS_SERVICES_PORT,
+    MONGODB_HOST,
+    MONGODB_PORT,
     MONGODB_CDS_SERVICES,
-    MONGODB_TMR_DB_HOST,
-    MONGODB_TMR_DB_PORT,
     MONGODB_TMR_DB,
     TREATMENT_SELECT_ROUTE,
     TREATMENT_REVIEW_ROUTE,
@@ -28,12 +26,10 @@ const {
   };
 
 ///CDS SERVICES CONNECTION
-const db_cds_services_host = ( MONGODB_CDS_SERVICES_HOST || "localhost");
-const db_cds_services_port = ( MONGODB_CDS_SERVICES_PORT || "27017" );
+const host = ( MONGODB_HOST || "localhost");
+const port = ( MONGODB_PORT || "27017" );
 const cds_services_db = ( MONGODB_CDS_SERVICES || "cds-services" );
 /// TMR CONNECTION
-const db_tmr_host = ( MONGODB_TMR_DB_HOST || "localhost");
-const db_tmr_port = ( MONGODB_TMR_DB_PORT || "27017" );
 const tmr_db = ( MONGODB_TMR_DB || "tmr-db" );
 
 //create a DB connection
@@ -60,10 +56,18 @@ function makeNewConnection(uri) {
     return db;
 }
 
-const servicesConnection = makeNewConnection(`mongodb://${db_cds_services_host}:${db_cds_services_port}/${cds_services_db}`);
-const tmrConnection = makeNewConnection(`mongodb://${db_tmr_host}:${db_tmr_port}/${tmr_db}`);
+//key-value list of CIG Model DBs
+let connectionsList = new Map();
+
+//cds services DB
+const servicesConnection = makeNewConnection(`mongodb://${host}:${port}/${cds_services_db}`);
+
+//tmr DB
+const tmrConnection = makeNewConnection(`mongodb://${host}:${port}/${tmr_db}`);
+//add connection with CigId as key
+connectionsList.set("tmr",tmrConnection);
 
 module.exports = {
     servicesConnection,
-    tmrConnection
+    connectionsList
 };
