@@ -38,5 +38,5 @@ datalist: 'dataList',
 ciglist: 'cigList',
 isAncestor_strict: "isAncestor-strict",
 isAncestor_eq: "isAncestor-eq",
-codeSyst: "codeSystem"
+codeSyst: "codeSystemId"
 }
