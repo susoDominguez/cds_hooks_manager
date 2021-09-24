@@ -743,8 +743,8 @@ async function getOutcomeList(
     //check whether we are working with an element or a singleton array
     let isSingletonLHSValue =
       Array.isArray(aLHSVal) && aLHSVal.length < 2 ? true : false;
-    //if the argument is wrap in a singleton array, unwrap
-    aLHSVal = isSingletonLHSValue ? aLHSVal[0] : aLHSVal;
+      //if the argument is wrap in a singleton array, unwrap
+      aLHSVal = isSingletonLHSValue ? aLHSVal[0] : aLHSVal;
 
     //now test again for the updated value.
     //At this point We have either a primitive value or an array of size gt 1
@@ -770,8 +770,8 @@ async function getOutcomeList(
     ///now construct the query//
 
     //projection field
-    //if index is -1, use the whole resultList array instead of just a particular element at index i
     //this is the RHS value
+    //by default they are wrapped in a List
     let arrayElemAtRhs = {
       $arrayElemAt: ["$$resultObject." + argList, rhsArgIndex],
     };
@@ -837,7 +837,7 @@ async function getOutcomeList(
           };
         }
         break;
-      case "inLHS":
+      case "inLHS": case isAncestor_eq:
         //element in array at pathList index i', exists in resultList.argList at index i
         //if element in array at pathList index i' is an array, then by default of algorithm it has size greater than 1 and the operation is a subsetOf
         if (isLHSValList) {
