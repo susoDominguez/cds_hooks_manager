@@ -1,11 +1,102 @@
 "use strict";
 const mongoose = require("mongoose");
-const { isAncestor_eq, isAncestor_strict, isDescendant_eq, isDescendant_strict } = require("./constants")
+const { isAncestor_eq} = require("./constants")
 //Define a schema
 const Schema = mongoose.Schema;
 
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
 const paramSchema = new Schema({
+  parameter: { type: String, required: true, maxlength: 100 },
+  cigInvolved: { type: [String], required: false, default: [], maxlength: 100 },
+  //list of objects specifying where to find the data, their type and default values (possibly another Jsonpath) if data not found
+  pathList: {
+    type: [
+      {
+        label: { type: String, required: true, },
+        Jpath: { type: String, required: true, default: ""},
+        typeOf: {
+          type: String,
+          required: true,
+          enum: ["boolean", "array", "string", "date", "number"],
+          default: "string",
+        },
+        defaultVal: {
+          type: Schema.Types.Mixed,
+          required: false,
+          default: "-1",
+        },
+        required: { type: Boolean, required: true, default: true },
+      },
+    ],
+    required: true,
+    default: [],
+  },
+  actionList: {
+    type: [
+      {
+        action: {
+          type: String,
+          enum: ["inLHS", "subsetOf", "subSetOfLHS", "function", "comparison", "in", "findRef", "subClassOf"],
+          default: "in",
+          required: true,
+        },
+        details: {
+          type: {
+            //case function
+            function_name: { type: String, required: false },
+            //case comparison
+            rhsArg: {
+              type: String,
+              required: false
+            },
+            //case comparison
+            compare: {
+              type: String,
+              required: false,
+              enum: ["eq", "gt", "gte", "lt", "lte", "ne"],
+            },
+            //ALL cases
+            pathList_label: {
+              type: {
+                lhs: { type: String, required: true, default: ""},
+                rhs: { type: String, required: false, default: ""}
+              },
+              required: false
+            },
+            //case findRef
+            Jpath: { type: String, required: false },
+            typeOf: {
+              type: String,
+              required: false,
+              enum: ["boolean", "array", "string", "date", "number"],
+              default: "string",
+            },
+            //find copncept relations: Terminology system
+            codeSystemId: {
+              type: String,
+              required: false,
+              enum: ["SNOMEDCT", "LOINC", "READ"]
+            }
+          }
+        }
+      }
+    ],
+    required: true,
+    default: [],
+  },
+  outcomeList: {
+    type: [
+      {
+        rhsArg: { type: [Schema.Types.Mixed], required: true, default: [] },
+        outcome: { type: [Schema.Types.Mixed], required: true, default: [] },
+      },
+    ],
+    required: true,
+    default: [],
+  },
+});
+
+const paramSchema_old = new Schema({
   parameter: { type: String, required: true, maxlength: 100 },
   cigInvolved: { type: [String], required: false, default: [], maxlength: 100 },
   //list of objects specifying where to find the data, their type and default values (possibly another Jsonpath) if data not found

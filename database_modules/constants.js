@@ -36,7 +36,6 @@ patientId: "patientId",
 //result object fields
 datalist: 'dataList',
 ciglist: 'cigList',
-isAncestor_strict: "isAncestor-strict",
-isAncestor_eq: "isAncestor-eq",
+isAncestor_eq: "subClassOf",
 codeSyst: "codeSystemId"
 }
