@@ -7,23 +7,24 @@ const {
   argList,
   outcome,
   details,
-  resultArgListIndex,
-  resultList,
+  rhsArg,
+  lhsArg,
+  outcomeList,
   typePath,
-  actionList,
   action,
-  pathListIndex,
   pathList,
   isMandatory,
   xpath,
   comparison,
   defaultVal,
-  compare,
   findRef,
-  functName,
   labelTemplate,
   isAncestor_eq,
   codeSyst,
+  actionList,
+  symbol,
+  arg1,
+  arg2,
 } = require("../database_modules/constants.js");
 const flat = require("array.prototype.flat");
 const {
@@ -34,7 +35,7 @@ const {
 const { ErrorHandler } = require("../lib/errorHandler");
 const logger = require("../config/winston");
 const { Model } = require("mongoose");
-const axios = require("axios");
+const got = require("got");
 const qs = require("querystring");
 const { SNOMEDCT } = process.env;
 
@@ -42,12 +43,12 @@ const { SNOMEDCT } = process.env;
 
 /**
  * creates an object containing values and actions to be applied to values
- * @param {object} docObj context as taken from request
+ * @param {object} eform context as taken from request call
  * @returns {object} object containig values and functions to be applied to those values
  */
-function addFunctionsFromTemplateToArgsObject(docObj) {
+function addFunctionsFromTemplateToArgsObject(eform) {
   //get actions
-  let actionArray = docObj[actionList];
+  let actionArray = eform[actionList];
 
   //check we are working w/array
   if (!Array.isArray(actionArray))
@@ -66,22 +67,22 @@ function addFunctionsFromTemplateToArgsObject(docObj) {
         obj[action] === functLabel ||
         obj[action] === findRef ||
         obj[action] === isAncestor_eq ||
-        (obj[action] === comparison && obj[details][pathListIndex].length > 1)
+        obj[action] === comparison
     ),
-    //filter only comparisons with the resultList; they have at most one argument form argList
+    //filter only comparisons with the outcomeList; they have at most one argument form argList
     actions: actionArray.filter(
       (obj) =>
         //not equal to any of the above elements apart from isAncestor_eq
-        (obj[action] !== functLabel &&
-          obj[action] !== findRef &&
-          obj[action] !== comparison) ||
-        //or if it is a comparison, it has more than one argument
-        (obj[action] === comparison && obj[details][pathListIndex].length < 2)
+        obj[action] !== functLabel &&
+        obj[action] !== findRef &&
+        obj[action] !== isAncestor_eq &&
+        obj[action] !== comparison
     ),
-    //list of arguments. To be extracted from clinical context as part of request
-    argsPathList: new Array(),
+    //Map of arguments where the key is the parameter label and the value is the PathList object.
+    //To be extracted from clinical context as part of request
+    argsPathListMap: new Map(),
     //list of assessed results. to be compared with arguments to select zero or more results if triggered.
-    argsResultList: docObj[resultList],
+    argsOutcomeList: eform[outcomeList],
   };
 
   //check they are arrays
@@ -98,33 +99,33 @@ function addFunctionsFromTemplateToArgsObject(docObj) {
 }
 
 /**
- * add parameter and corresponding args to Map
+ * add parameter and derived value from e-forms to a Map
  * @param {object} contextObj context as taken from request
- * @param {object} docObj fetch template
- * @param {object} argsPathList object containing arrays with functions, arguments and assessed results
+ * @param {object} docObj e-form object
+ * @param {Map} eFormsValuesMap object containing arrays with functions, arguments and assessed results
  */
-function getDataPointValues(contextObj, docObj, argsPathList) {
-  //three stages: path, actions-functions and action-results.
-  //First fetch parameters, type properly, apply functions and add to MAP.
+function getDataPointValues(contextObj, docObj, eFormsValuesMap) {
+  //Fetch parameters, type properly and add to MAP.
   //Then apply to already existing MAP object the actions for comparisons to find results
   //or the existing result if not comparison is needed
 
   //Array containing list of objects with data points to be extracted:
-  const pathObj = docObj[pathList];
+  const pathListObj = docObj[pathList];
 
-  //by checking if type array, it types pathObj
-  if (!Array.isArray(pathObj))
+  //recognise as array
+  if (!Array.isArray(pathListObj))
     throw new ErrorHandler(500, "field paths expected to be an array.");
 
   //for each path in pathList. If path is empty list, deal with it later
-  for (const aPath of pathObj) {
+  for (const aPath of pathListObj) {
     //check it has all the expected properties
     if (
       !(
         aPath.hasOwnProperty(typePath) ||
         aPath.hasOwnProperty(isMandatory) ||
         aPath.hasOwnProperty(xpath) ||
-        aPath.hasOwnProperty(labelTemplate)
+        aPath.hasOwnProperty(labelTemplate) ||
+        aPath.hasOwnProperty(defaultVal)
       )
     )
       throw new ErrorHandler(
@@ -138,15 +139,14 @@ function getDataPointValues(contextObj, docObj, argsPathList) {
         }`
       );
 
-    //label of data
-    let dataLabel = aPath[labelTemplate];
+    //label of e-form
+    let eformLabel = aPath[labelTemplate];
     //type of path
     let dataType = aPath[typePath];
-
     //is this data optional?
     let isDataOptional = !aPath[isMandatory];
 
-    //string with the xpath to value and the default value
+    //string with the Jpath to value and the default value
     let jpathStr = aPath[xpath];
 
     //obtain value from request body. If not found, it returns undefined.
@@ -158,17 +158,19 @@ function getDataPointValues(contextObj, docObj, argsPathList) {
 
     //if undefined, get the default value which could also be undefined or a JSONpath of the same type as the main one
     if (valueFromContext === undefined) {
-      //get default value (possibly undefined) and check whether it is also a path to data in a resource
+      //get default value (possibly undefined or "-1") and check whether it is also a path to data in a resource
       let defaultValue = aPath[defaultVal];
 
-      // is it an array?
+      // is it an array? convert into a JSON array
       if (("" + defaultValue).trim().startsWith("["))
         defaultValue = JSON.parse(defaultValue);
 
-      //are we dealing with another JSONPath format? //TODO: Possibly add another property to confirm it is a JPath
+      //are we dealing with another JSONPath format?
+      //TODO: Possibly add another property to confirm it is a JPath
       let isDefaultValueJpath =
         defaultValue !== undefined &&
         !Array.isArray(defaultValue) &&
+        //cds Hooks informational context
         (("" + defaultValue).startsWith("context") ||
           ("" + defaultValue).startsWith("prefetch"));
 
@@ -176,38 +178,38 @@ function getDataPointValues(contextObj, docObj, argsPathList) {
       valueFromContext = isDefaultValueJpath
         ? getDataFromContext(defaultValue, contextObj)
         : defaultValue;
-    }
+    } //endOf default vlaue undefined
 
     //if this parameter is still undefined :
     if (valueFromContext === undefined) {
       //but optional:
       if (isDataOptional) {
         //return undefined to hold the position in the array of arguments
-        argsPathList.push(undefined);
+        eFormsValuesMap.set(eformLabel, undefined);
         //then continue to next iteration
         continue;
       } else {
         //if mandatory, end process and send error
         throw new ErrorHandler(
           500,
-          `MongoDB: In parameter ${docObj[paramName]}, data Object ${dataLabel} is required yet its value could not be extracted from the request neither a default value is specified in the template.`
+          `MongoDB: In parameter ${docObj[paramName]}, data Object ${eformLabel} is required yet its value could not be extracted from the request neither a default value is specified in the template.`
         );
       }
     }
 
     logger.info(
-      `Extracted context value for property ${dataLabel} in MOngoDb is:  ${JSON.stringify(
+      `dataPath ${eformLabel} returned value ${JSON.stringify(
         valueFromContext
       )}`
     );
 
-    /// DATA IS ALREADY EXTRACTED ///
+    /// DATA HAS ALREADY BEEN EXTRACTED ///
 
     //typing the extracted data
     valueFromContext = typePathVal(dataType, valueFromContext);
 
     //add value to list after potentially applying a function on it.
-    argsPathList.push(valueFromContext);
+    eFormsValuesMap.set(eformLabel, valueFromContext);
   }
 }
 
@@ -282,115 +284,67 @@ function typePathVal(typepath, value) {
   //if initial data was not an array, unwrap it from the array we created
   return !isArrayData ? resultArr[0] : resultArr;
 }
-
 /**
- * @param {Array} schemeId clinical scheme to be applied. Refers to an URL location (SNOMEDCT by default)
- * @param {Array} conceptIdList List of concept Ids extracted from the hook object
- * @param {number} conceptId concept to be compared/relarted to, as given by the Fetch Template
- * @returns {boolean} is an ancestor or equal to the given concept Id?
+ * Find ancestors of given concept using the given clinical code schema
+ * @param {String} schemeId clinical code scheme id
+ * @param {String} concept concept id
  */
-async function isAncestorEq(schemeId, conceptIdList, conceptId) {
-  //find URL from schemeId
-  let url;
-  let postUrl = "";
-  let preUrl = "https://";
-  let jsonPath = "";
+async function getAncestors(schemeId, concept) {
 
-  //array containing http requests
-  let requests = new Array();
+    //find URL from schemeId
+    let postUrl = "";
+    let preUrl = "https://";
+    let jsonPath = "";
 
-  switch (schemeId) {
-    default:
-      url = SNOMEDCT;
-      jsonPath = conceptId + " in $[].conceptId";
-      break;
-  }
-
-  //for each conceptId in List:
-  for (let index = 0; index < conceptIdList.length; index++) {
-    const concept = conceptIdList[index];
-
-    //check for equality
-    if (concept === conceptId) {
-      return true;
-    } else {
-      //additional parts of the URL
-      switch (schemeId) {
-        default:
-          postUrl = "/" + concept + "/ancestors";
-          break;
-      }
+    switch (schemeId) {
+      default:
+        postUrl = SNOMEDCT +
+          "/snowstorm/snomed-ct/browser/MAIN/concepts/" +
+          concept +
+          "/ancestors";
+        jsonPath = `$.conceptId`;
+        break;
     }
-
-    let requestUrl = preUrl + url + postUrl;
-    logger.info(requestUrl);
-    let response;
-    //if not equal, add HTTP request to list for parallel threading
     try {
-      //fetch ancestors of conceptId in List
-      response = axios.get(requestUrl);
-    } catch (error) {
-      throw new ErrorHandler(500, error.message);
-    }
-    requests.push(response);
-  }
-
-  let responses = [];
-  try {
-    //array containing ancestors for all conceptIds
-    responses = await axios.all(requests);
-  } catch (error) {
-    throw new ErrorHandler(500, "responses-axios.all: " + error.message);
-  }
-
-  //is conceptId an ancestor in List?
-  for (let index = 0; index < responses.length; index++) {
-    const response = responses[index];
-    //apply jsonata patter for given schemeId
-    let boolResult = getDataFromContext(jsonPath, response);
-    logger.info(boolResult);
-    //if true, return else continue with next conceptId in List
-    if (boolResult === true) return true;
-  }
-
-  //if not found return false
-  return false;
+    let res = await  got(preUrl + postUrl, { json: true });
+    return getDataFromContext(jsonPath, res.body);
+    } catch(err){
+      throw new ErrorHandler(500, err);
+    }   
 }
 
 /**
  *
- * @param {object} hookObj context as taken from request object
- * @param {object} listOfArgs list of References to find
- * @param {object} actObj object findRef action definition from Fetch Template
- * @param {object} indexArr internal position within actions List
+ * @param {object} hookContext hook Context
+ * @param {Map} refsList list of references
+ * @param {object} actObj object findRef action definition from eform in Fetch Doc
  * @returns array
  */
-function findReferencesInContext(hookObj, listOfArgs, actObj, indexArr) {
+function findReferencesInContext(hookContext, refsList, actObj) {
+
   //check for properties
   if (
     !(
       actObj.hasOwnProperty(details) ||
       actObj[details].hasOwnProperty(xpath) ||
-      actObj[details].hasOwnProperty(typePath)
+      actObj[details].hasOwnProperty(typePath) ||
+      actObj[details].hasOwnProperty(arg1)
     )
   )
     throw handleError(
       500,
-      `property ${details} is missing  property ${xpath} or ${typePath} in object ActionList on template`
+      `property ${details} is missing  property ${xpath} or ${typePath} or ${arg1} in object actions on eform`
     );
 
   //JSONpath is expected to be written with 2 placeholders: var1 and var2
-  let xPathStr = actObj[details][xpath] || undefined;
-  let typing = actObj[details][typePath] || undefined;
-
-  //get reference(s) from array with arguments
-  let refArr = listOfArgs[indexArr[0]];
+  let xPathStr = actObj[details][xpath] ;
+  let typing = actObj[details][typePath] ;
 
   //list of results that will replace the list of arguments at the given index of the general argsList array
   let tempList = new Array();
 
   //for each reference
-  for (const refString of refArr) {
+  for (const refString of refsList) {
     //replace var1 and var2 by refString parts
     let refWords = refString.split("/");
 
@@ -400,43 +354,59 @@ function findReferencesInContext(hookObj, listOfArgs, actObj, indexArr) {
       .replace("var1", refWords[0])
       .replace("var2", refWords[1]);
     logger.info(`path string is ${pathStr}`);
-    let temp = getDataFromContext(pathStr, hookObj);
+    let res = getDataFromContext(pathStr, hookContext);
 
-    if (!temp)
+    if (!res)
       throw new ErrorHandler(
         500,
         `Function reference finder has not been able to find the reference in the context using the specified data from MOngoDB`
       );
     //add to temp list
-    tempList.push(temp);
+    tempList.push(res);
   }
+  //flatten list with referenced values
+  tempList = flat(tempList,1);
+
   //typing of values
   //replace args with new data list
   return typePathVal(typing, tempList);
 }
 
-/*** Applies user defined functions or actions where all the arguments come from the CDS Hook document or when checking for ancestors.
- * Order of application matters. Note that findRef > user-defined functs > comparison > isAncestor_eq between hook data as arguments
- * @param {object} hookObj hook context with resources. To be used on a reference find
- * @param {object} argsResultList resultList with results as taken from DB. To be applied to isAncestor_eq
- * @param {array} funListAction array with functions
- * @param {array} pathListVals array with  arguments
+/**
+ * Using a given object, fetch value in MAp using object as key, else object is value itself
+ * @param {Map} dataPathMap Map structure containing dataPaths values referenced by their label
+ * @param {object} param Object that can be a key to obtain value or value directly
  */
-function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
-  //if empty, there are no middle actions to be applied at this moment
+function fetchArgumentVal(dataPathMap, param) {
+  return dataPathMap.has(param) ? dataPathMap.get(param) : param;
+}
+
+/*** Applies user defined functions or actions between data extracted from hook context or subClassOf operator.
+ * Order of application matters. Note that findRef > user-defined functs > comparison > isAncestor_eq between hook data as arguments
+ * @param {object} hookCntxtObj hook context with resources. To be used on a reference find
+ * @param {object} outputObj output list. To be applied to isAncestor_eq
+ * @param {array} funListAction array with functions
+ * @param {Map} dataPathsValMap map with data extracted from hook context referenced by dataPaths' parameter field
+ */
+async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsValMap) {
+  //if empty, there are no actions to be applied at this moment
   if (funListAction == []) return;
 
   //apply mid-process action to values in list of arguments
-  for (const actObj of funListAction) {
+  for (const actionObject of funListAction) {
+    //TODO: revise changes to schema. now we do not apply indices
     //name of function
-    let funName;
+    let operatorName;
     //check for properties action and details
-    if (actObj.hasOwnProperty(action) && actObj.hasOwnProperty(details)) {
-      //if it is labelled as function, use the function name given in details property
-      funName =
-        actObj[action] === functLabel
-          ? actObj[details][functName]
-          : actObj[action];
+    if (
+      actionObject.hasOwnProperty(action) &&
+      actionObject.hasOwnProperty(details)
+    ) {
+      //if it is labelled as function, take the function symbol as operator otherwise use the action name
+      operatorName =
+        actionObject[action] === functLabel
+          ? actionObject[details][symbol]
+          : actionObject[action];
     } else {
       throw new ErrorHandler(
         500,
@@ -444,28 +414,27 @@ function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
       );
     }
 
-    //list with indices for arguments. We expect at most 2 arguments
-    let indexArr;
+    //parameter names used as arguments. We expect at most 2 arguments
+    let firstArgLbl;
+    let secondArgLbl;
 
+    //test for consistent structure
     if (
-      actObj.hasOwnProperty(details) &&
-      actObj[details].hasOwnProperty(pathListIndex)
+      actionObject.hasOwnProperty(details) &&
+      actionObject[details].hasOwnProperty(arg1)
     ) {
-      //index over pathlist array in Fetch document
-      indexArr = actObj[details][pathListIndex];
+      //name of first argument
+      firstArgLbl = actionObject[details][arg1];
+
+      //test for a second argument
+      if (actionObject[details].hasOwnProperty(arg2))
+        secondArgLbl = actionObject[details][arg2];
     } else {
       throw new ErrorHandler(
         500,
-        `property ${details} or ${pathListIndex} are not found in object ActionList on template`
+        `field ${details} or ${arg1} is not found in e-form`
       );
     }
-
-    //if anything fails, throw error
-    if (!Array.isArray(indexArr))
-      throw new ErrorHandler(
-        500,
-        `MongoDb error: actionList has issues with a function on the MongoDb. Check details of function ${funName}.`
-      );
 
     //this var will contain the resulting value to replace the initial arguments
     let newVal;
@@ -473,95 +442,111 @@ function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
     ///begin with comparison between arguments. resulting boolean value is stored in first given argument, ie., lhs arg
     //the rhs argument must be nullified so that it does not show in the reply
     //then user-defined functions
-    switch (funName) {
+    switch (operatorName) {
       case isAncestor_eq:
-        //fetch all conceptId values from resultList:
-        //get resultListIndex
-        let indx, codeSystId;
+        //fetch all conceptId values from outcomeList:
+        //field name on rhs and code system id
+        let codeSystId;
+
         if (
-          actObj.hasOwnProperty(details) &&
-          actObj[details].hasOwnProperty(resultArgListIndex) &&
-          actObj[details].hasOwnProperty(codeSyst)
+          //test there is a field for code system and that we have a second parameter
+          actionObject[details].hasOwnProperty(codeSyst) &&
+          secondArgLbl
         ) {
-          //index over resultList array in Fetch document
-          indx = actObj[details][resultArgListIndex];
-          codeSystId = actObj[details][codeSyst];
+          codeSystId = actionObject[details][codeSyst];
         } else {
           throw new ErrorHandler(
             500,
-            `property ${resultArgListIndex} is not found in object ActionList on DB Fetch document`
+            `property codeSystmId or arg2 are not found in action subClassOf`
           );
         }
-        //use resultListIndex value to obtain conceptIds from resultList using jsonata
+
+        //obtain all concept Ids using arg2 and output
         //path to values using index
-        let jsonPath = "$.argList[" + indx + "]";
-        //find values. Returns an array. Flatten to make sure it is not an arr of arrs
-        let response = flat(getDataFromContext(jsonPath, argsResultList));
+        let jsonPathArg2 = `$.queryArgs.${secondArgLbl}`;
+        //find values.
+        //Returns an array.
+        let args2Values = getDataFromContext(jsonPathArg2, outputObj);
+
+        logger.info(
+          `Values extracted from arg2 in output: ${JSON.stringify(args2Values)}`
+        );
+
+        //apply operation for each extracted concept and list of concepts extracted
+        //from hook context
+        //if succeeds, add concept Id to a list
+        //when done, conceptIdList is the value to add to arg1 val
+        //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
-
-        let output = pathListVals[indexArr[0]];
+        let args1Values = dataPathsValMap.get(firstArgLbl);
+        logger.info(
+          `Values extracted from arg1 in output: ${JSON.stringify(args1Values)}`
+        );
         //isAncestor_eq expects a list of conceptIds to check
+        //link lists or add item to list
         let conceptIdList = new Array();
-        if (Array.isArray(output)) {
-          conceptIdList = output;
+        if (Array.isArray(args1Values)) {
+          conceptIdList = args1Values;
         } else {
-          conceptIdList.push(output);
+          conceptIdList.push(args1Values);
         }
 
-        let responseArr = new Array();
-        response.forEach((conceptId) => {
-          try {
-            let boolResult = isAncestorEq(
-              codeSystId,
-              conceptIdList,
-              "" + conceptId
-            );
-            responseArr.push(boolResult);
-          } catch (err) {
-            throw new ErrorHandler(500, "applyActions: " + err.message);
-          }
-        });
-        //await all
-        try {
-          let isAncestorResultList = await.all(responseArr);
-        } catch (err) {
-          throw new ErrorHandler(
-            500,
-            "applyActions:isAncestorResultList: " + err.message
-          );
-        }
-        //newVal of Array type
+
+        //retrieve a list of all ancestors for all concept s
+        let allAncestors =  await Promise.all( 
+          conceptIdList.map( async conceptId => {
+            //logger.info(`conceptId is ${conceptId}`);
+           return getAncestors(codeSystId, conceptId) ;
+        }));
+        //add the concepts also
+        allAncestors.push(conceptIdList);
+        //flatten
+        allAncestors = flat(allAncestors,1);
+
         newVal = new Array();
 
-        //for each truth value, push the conceptId to newVal
-        for (let index = 0; index < isAncestorResultList.length; index++) {
-          const boolVal = isAncestorResultList[index];
-          const conceptId = conceptIdList[index];
-          if (boolVal) newVal.push(conceptId);
+        logger.info(`allAncestors is ${JSON.stringify(allAncestors)}`);
+
+        for(let index=0;index<args2Values.length;index++){
+          let conceptId = args2Values[index];
+          logger.info(`parent conceptId is ${conceptId}`);
+          logger.info(`is ancestor ${allAncestors.includes(conceptId)}`);
+          if(allAncestors.includes(conceptId)) newVal.push(conceptId);
         }
-        //TODO: when evaluating, use inLSH to check with conceptIds were ancestors
+        
+        logger.info(`newVal is ${JSON.stringify(newVal)}`);
+
+        //TODO: when evaluating, check whether any ancestorConceptid is in the list of arguments
         break;
+      //////////////////
       case findRef:
         //find Resources in context from a list of given references
         newVal = findReferencesInContext(
-          hookObj,
-          pathListVals,
-          actObj,
-          indexArr
+          hookCntxtObj,
+          dataPathsValMap.get(firstArgLbl),
+          actionObject
         );
+        logger.info(`referenced values are ${newVal}`);
         break;
+      /////////////
       case comparison:
         //only if 2 args are given
-        if (indexArr.length <= 1) break;
+        if (!secondArgLbl)
+          throw new ErrorHandler(
+            500,
+            `second argument is missing when comparing objects`
+          );
+
         //comparison sign
-        const comparisonSymbol = actObj[details][compare];
-        //values possibly wrapped in singleton Array, remove for comparison
-        let lhsArg = pathListVals[indexArr[0]];
-        let rhsArg = pathListVals[indexArr[1]];
-        logger.info(
-          `LHS value is ${lhsArg} and RHS value is ${rhsArg} when comparing  data from indexes ${indexArr[0]} and ${indexArr[1]} respectively`
-        );
-        //To compare 2 values taken from the pathList, we expect at most one singleton array or a primitive value; otherwise it is an error
+        const comparisonSymbol = actionObject[details][symbol];
+
+        //find whether argument is a key or a value to be applied directly
+        //if key, get value from Map
+        let lhsArg = fetchArgumentVal(dataPathsValMap, firstArgLbl);
+        let rhsArg = fetchArgumentVal(dataPathsValMap, secondArgLbl);
+
+        //To compare 2 values taken from the pathList,
+        //we expect at most one singleton array or a primitive value; otherwise it is an error
         //if singleton array, fetch value else error
         if (Array.isArray(lhsArg) && lhsArg.length < 2) {
           lhsArg = lhsArg[0];
@@ -588,7 +573,6 @@ function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
             );
         }
 
-        //notice it removes the array wrapper when updating with result
         switch (comparisonSymbol) {
           case "eq":
             newVal = lhsArg === rhsArg;
@@ -613,21 +597,22 @@ function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
           // TODO: case "in":
           // newVal = (Array.isArray(lhsArg)) ?
         }
-        //the non-updated argument(s) must be removed so it does not show as a result
-        //listOfArgs[indexArr[1]] = undefined;
+        logger.info(
+          `LHS value is ${lhsArg} and RHS value is ${rhsArg} and comparison symbol ${comparisonSymbol} for  ${firstArgLbl} and ${secondArgLbl}, respectively. The result is ${newVal}.`
+        );
         break;
+      ////////////////
       default:
         ///name of user-defined functions. Extend by adding label and how to apply function//
-
-        switch (funName) {
+        switch (operatorName) {
           case "getYearsFromNow":
             //this case has only one arg so index value has to be at index 0
-            newVal = getYearsFromNow(pathListVals[indexArr[0]]);
+            newVal = getYearsFromNow(dataPathsValMap.get(firstArgLbl));
             break;
 
           case "calculate_age":
             //this case has only one arg so index value has to be at index 0
-            newVal = calculate_age(pathListVals[indexArr[0]]);
+            newVal = calculate_age(dataPathsValMap.get(firstArgLbl));
             break;
 
           case "arr_diff_nonSymm":
@@ -635,16 +620,16 @@ function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
             let arr1 = new Array();
             let arr2 = new Array();
 
-            if (!Array.isArray(pathListVals[indexArr[0]])) {
-              arr1.push(pathListVals[indexArr[0]]);
+            if (!Array.isArray(dataPathsValMap.get(firstArgLbl))) {
+              arr1.push(dataPathsValMap.get(firstArgLbl));
             } else {
-              arr1 = pathListVals[indexArr[0]];
+              arr1 = dataPathsValMap.get(firstArgLbl);
             }
 
-            if (!Array.isArray(pathListVals[indexArr[1]])) {
-              arr2.push(pathListVals[indexArr[1]]);
+            if (!Array.isArray(dataPathsValMap.get(secondArgLbl))) {
+              arr2.push(dataPathsValMap.get(secondArgLbl));
             } else {
-              arr2 = pathListVals[indexArr[1]];
+              arr2 = dataPathsValMap.get(secondArgLbl);
             }
 
             newVal = arr_diff_nonSymm(arr1, arr2);
@@ -655,7 +640,7 @@ function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
     } //endOfSwitch
 
     //replace argument with resulting value
-    pathListVals[indexArr[0]] = newVal;
+    dataPathsValMap.set(firstArgLbl, newVal);
   } //endOfLoop
 
   //arguments are arrays so pass-by-ref, hence no need to return changes
@@ -670,16 +655,16 @@ function applyActions(hookObj, argsResultList, funListAction, pathListVals) {
 async function getOutcomeList(
   model,
   key,
-  { funListAction = [], actions = [], argsPathList = [], argsResultList = [] }
+  { funListAction = [], actions = [], argsPathList = [], argsoutcomeList = [] }
 ) {
   //SPECIAL CASES
 
   //var holding result for special cases;
   let resArr;
-  //if argsResultList is empty,
+  //if argsoutcomeList is empty,
   //then the purpose is to return the fetched (and possibly modified by user-defined functs)
   //value(s) from the hook context.
-  if (argsResultList.length === 0) {
+  if (argsoutcomeList.length === 0) {
     //remove any undefined value from the argsPathList array before returning
     resArr = argsPathList.filter((element) => element !== undefined);
     //if there are more than one elem, send array as it is (possibly array of arrays); otherwise, flatten array into a single array
@@ -692,7 +677,7 @@ async function getOutcomeList(
     argsPathList.length === 0 ||
     argsPathList.every((elemn) => elemn === undefined)
   ) {
-    resArr = argsResultList[0][outcome];
+    resArr = argsoutcomeList[0][outcome];
     return flat(resArr, 1);
   }
 
@@ -716,8 +701,8 @@ async function getOutcomeList(
     if (
       !(
         actionObj.hasOwnProperty(details) ||
-        actionObj[details].hasOwnProperty(resultArgListIndex) ||
-        actionObj[details].hasOwnProperty(pathListIndex) ||
+        actionObj[details].hasOwnProperty(rhsArg) ||
+        actionObj[details].hasOwnProperty(pathList_label) ||
         argsPathList.hasOwnProperty(lhsArgIndex)
       )
     )
@@ -728,11 +713,11 @@ async function getOutcomeList(
 
     //fetch their indices first:
 
-    //by definition, resultArgListIndex is not of array type
-    let rhsArgIndex = actionObj[details][resultArgListIndex];
+    //by definition, rhsArg is not of array type
+    let rhsArgIndex = actionObj[details][rhsArg];
 
-    //by definition, pathListIndex is an array and the value at index 0 is used
-    let lhsArgIndex = actionObj[details][pathListIndex][0];
+    //by definition, pathList_label is an array and the value at index 0 is used
+    let lhsArgIndex = actionObj[details][pathList_label][0];
 
     //Next, use the lhs index to get the value for the lhs. Note that rhs could have many results to select from
     let aLHSVal = argsPathList[lhsArgIndex];
@@ -743,8 +728,8 @@ async function getOutcomeList(
     //check whether we are working with an element or a singleton array
     let isSingletonLHSValue =
       Array.isArray(aLHSVal) && aLHSVal.length < 2 ? true : false;
-      //if the argument is wrap in a singleton array, unwrap
-      aLHSVal = isSingletonLHSValue ? aLHSVal[0] : aLHSVal;
+    //if the argument is wrap in a singleton array, unwrap
+    aLHSVal = isSingletonLHSValue ? aLHSVal[0] : aLHSVal;
 
     //now test again for the updated value.
     //At this point We have either a primitive value or an array of size gt 1
@@ -807,8 +792,8 @@ async function getOutcomeList(
         };
         break;
 
-      case "inRHS": //RHS is the ResultList
-        //element in resultList.argList at index i, exists in array at pathList index i'
+      case "inRHS": //RHS is the outcomeList
+        //element in outcomeList.argList at index i, exists in array at pathList index i'
 
         //2 cases:
         //case 1: LHS is not an array
@@ -837,8 +822,9 @@ async function getOutcomeList(
           };
         }
         break;
-      case "inLHS": case isAncestor_eq:
-        //element in array at pathList index i', exists in resultList.argList at index i
+      case "inLHS":
+      case isAncestor_eq:
+        //element in array at pathList index i', exists in outcomeList.argList at index i
         //if element in array at pathList index i' is an array, then by default of algorithm it has size greater than 1 and the operation is a subsetOf
         if (isLHSValList) {
           compObj = {
@@ -882,9 +868,9 @@ async function getOutcomeList(
       { $match: { [paramName]: key } },
       {
         $project: {
-          resultList: {
+          outcomeList: {
             $filter: {
-              input: "$" + resultList,
+              input: "$" + outcomeList,
               as: "resultObject",
               cond: conditionObj,
             },
@@ -895,7 +881,7 @@ async function getOutcomeList(
         $group: {
           _id: "$_id",
           results: {
-            $push: { $concatArrays: ["$" + resultList + "." + outcome] },
+            $push: { $concatArrays: ["$" + outcomeList + "." + outcome] },
           },
         },
       },
@@ -921,5 +907,4 @@ module.exports = {
   getOutcomeList,
   applyActions,
   addFunctionsFromTemplateToArgsObject,
-  isAncestorEq,
 };

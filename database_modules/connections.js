@@ -8,6 +8,7 @@ const {
     MONGODB_PORT,
     MONGODB_CDS_SERVICES,
     MONGODB_TMR_DB,
+    MONGODB_NON_CIG_DB,
     TREATMENT_SELECT_ROUTE,
     TREATMENT_REVIEW_ROUTE,
     CIGS_MERGE_ROUTE,
@@ -25,14 +26,7 @@ const {
     connectTimeoutMS: 10000
   };
 
-///CDS SERVICES CONNECTION
-const host = ( MONGODB_HOST || "localhost");
-const port = ( MONGODB_PORT || "27017" );
-const cds_services_db = ( MONGODB_CDS_SERVICES || "cds-services" );
-/// TMR CONNECTION
-const tmr_db = ( MONGODB_TMR_DB || "tmr-db" );
-
-//create a DB connection
+//create a new DB connection
 function makeNewConnection(uri) {
 
     const db = mongoose.createConnection(uri, options);
@@ -56,16 +50,31 @@ function makeNewConnection(uri) {
     return db;
 }
 
-//key-value list of CIG Model DBs
-let connectionsList = new Map();
+//HOST and PORT of DB
+const host = ( MONGODB_HOST || "localhost");
+const port = ( MONGODB_PORT || "27017" );
+///CDS SERVICES DB CONNECTION
+const cds_services_db = ( MONGODB_CDS_SERVICES || "cds-services" );
+/// TMR DB CONNECTION
+const tmr_db = ( MONGODB_TMR_DB || "tmr-db" );
+/// NON-CIG DB CONNECTION
+const non_cig_db = ( MONGODB_NON_CIG_DB || "non-cig-db" );
 
 //cds services DB
 const servicesConnection = makeNewConnection(`mongodb://${host}:${port}/${cds_services_db}`);
 
 //tmr DB
 const tmrConnection = makeNewConnection(`mongodb://${host}:${port}/${tmr_db}`);
-//add connection with CigId as key
+
+//non-cig DB
+const nonCigConnection = makeNewConnection(`mongodb://${host}:${port}/${non_cig_db}`);
+
+//key-value list of available databases for CDS Services
+let connectionsList = new Map();
+
+//add new connections to MAP
 connectionsList.set("tmr",tmrConnection);
+connectionsList.set("non-cig",nonCigConnection);
 
 module.exports = {
     servicesConnection,

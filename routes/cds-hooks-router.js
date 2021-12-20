@@ -18,12 +18,20 @@ router.get('/',
 router.get("/cigModel/:cigId", 
       asyncMiddleware(getCdsServicesByCig));
 
-/* POST provide personalised care plan with no argumentation */
+/* POST trigger some hook attached to some CIG authoring tool */
 router.post(
   '/:hook/cigModel/:cigId',
-  asyncMiddleware(fetchParams),
-  //send CDS data, wrapped in CDS Card, back to EHR client
+  asyncMiddleware(fetchParams)
+  //send data back to client
      //res.status(200).json(result)
 );
+
+/* POST trigger some hook attached to some CIG authoring tool */
+router.post(
+      '/:hook',
+      asyncMiddleware(fetchParams),
+      //send data back to client
+      //res.status(200).json(res.locals.cdsParams)
+    );
 
 module.exports = router;

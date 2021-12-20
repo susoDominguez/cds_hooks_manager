@@ -2,19 +2,20 @@ const mongoose = require("mongoose");
 const { servicesConnection, connectionsList } = require("./connections");
 const logger = require("../config/winston");
 const { ErrorHandler } = require("../lib/errorHandler");
-
+//this is the subClassOf operator label
 const { isAncestor_eq } = require("./constants");
 //Define a schema
 const Schema = mongoose.Schema;
 
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
+/*
 const paramSchema = new mongoose.Schema(
   {
     parameter: { type: String, required: true, maxlength: 100 },
     cigInvolved: {
-      type: [String],
+      type: String,
       required: false,
-      default: [],
+      default: "",
       maxlength: 100,
     },
     //list of objects specifying where to find the data, their type and default values (possibly another Jsonpath) if data not found
@@ -113,6 +114,129 @@ const paramSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+*/
+
+const paramSchema = new mongoose.Schema(
+  {
+    parameter: { type: String, required: true, maxlength: 100 },
+    cigInvolved: {
+      type: [String],
+      required: false,
+      default: [],
+      maxlength: 100,
+    },
+    //list of objects specifying where to find the data, their type and default values (possibly another Jsonpath) if data not found
+    dataPaths: {
+      type: [
+        {
+          label: { type: String, required: true },
+          Jpath: { type: String, required: true },
+          typeOf: {
+            type: String,
+            required: true,
+            enum: ["boolean", "array", "string", "date", "number"],
+            default: "string",
+          },
+          defaultVal: {
+            type: Schema.Types.Mixed,
+            required: false,
+            default: undefined,
+          },
+          required: { 
+            type: Boolean, 
+            required: true, 
+            default: true 
+          },
+        },
+      ],
+      required: true,
+      default: [],
+    },
+    actions: {
+      type: [
+        {
+          action: {
+            type: String,
+            enum: [
+              //arg1 in arg2 List?
+              "in",
+              //arg2 in arg1 List?
+              "inLhs", 
+              //unary of binary functions
+              "function",
+              //compare arg1 and arg2 from pathList
+              "comparison",
+              //compare arg1 and arg2 where arg2 is a parameter in the outcomelist
+              "Qomparison",
+              //find references given a list of identifiers
+              "findRef",
+              //aarg1 list is subset of arg2 list?
+              "subSetOf",
+              //arg2 list is subset of arg1 list?
+              "subSetOfLhs",
+              //arg1 (List) is in a non-strict subclass relation with arg2
+              isAncestor_eq,
+            ],
+            default: "in",
+            required: true,
+          },
+          details: {
+            type: {
+              //case comparison
+              arg1: {
+                type: String,
+                required: true,
+              },
+              arg2: {
+                type: String,
+                required: false
+              },
+              //case comparison and function
+              symbol: {
+                type: String,
+                required: false,
+                //add function symbols here
+                enum: ["eq", "gt", "gte", "lt", "lte", "ne"],
+              },
+              //case findRef //TODO: review this
+              Jpath: { 
+                type: String, 
+                required: false },
+              typeOf: {
+                type: String,
+                required: false,
+                enum: ["boolean", "array", "string", "date", "number"],
+                default: "string",
+              },
+              //find copncept relations: Terminology system
+              codeSystem: {
+                type: String,
+                required: false,
+                enum: ["SCT", "LOINC", "READ"],
+              },
+            },
+          },
+        }
+      ],
+      required: true,
+      default: [],
+    },
+    output: { //field outcome of type array is mandatory
+      type: [
+        {
+        queryArgs: { type: [Schema.Types.Mixed], required: true, default: [] },
+        outcome: { type: [Schema.Types.Mixed], required: true, default: [] },
+      },
+    ],
+      required: true,
+      default: [],
+    },
+  },
+  {
+    versionKey: false,
+    timestamps: true,
+  }
+);
 
 ///SCHEMA FOR STRUCTURAL TEMPLATES
 
@@ -170,7 +294,7 @@ const serviceModel = servicesConnection.model("Cds-Service", cdsServiceSchema);
 /**
  *
  * @param {string} cigId CIG model.
- * @param {string} hookId label of hook. Also, label of Collection in DB linked to CIG model
+ * @param {string} hookId hook id. Also, label of Collection in DB linked to CIG model
  * @returns
  */
 function getModelbyCig(cigId, hookId) {
@@ -185,6 +309,7 @@ function getModelbyCig(cigId, hookId) {
   } catch (err) {
     throw new ErrorHandler(500, "getModelbyCig: " + err.message);
   }
+  
   return Param;
 }
 
