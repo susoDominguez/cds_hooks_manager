@@ -5,10 +5,10 @@ const {
   paramName,
   functLabel,
   argList,
+  queryArgs,
   outcome,
   details,
-  rhsArg,
-  lhsArg,
+  Qomparison,
   outcomeList,
   typePath,
   action,
@@ -75,7 +75,7 @@ function addFunctionsFromTemplateToArgsObject(eform) {
         //not equal to any of the above elements apart from isAncestor_eq
         obj[action] !== functLabel &&
         obj[action] !== findRef &&
-        obj[action] !== isAncestor_eq &&
+        //obj[action] !== isAncestor_eq &&
         obj[action] !== comparison
     ),
     //Map of arguments where the key is the parameter label and the value is the PathList object.
@@ -102,9 +102,9 @@ function addFunctionsFromTemplateToArgsObject(eform) {
  * add parameter and derived value from e-forms to a Map
  * @param {object} contextObj context as taken from request
  * @param {object} docObj e-form object
- * @param {Map} eFormsValuesMap object containing arrays with functions, arguments and assessed results
+ * @param {Map} argsPathListMap Map from eform objects to returned values
  */
-function getDataPointValues(contextObj, docObj, eFormsValuesMap) {
+function getDataPointValues(contextObj, docObj, argsPathListMap) {
   //Fetch parameters, type properly and add to MAP.
   //Then apply to already existing MAP object the actions for comparisons to find results
   //or the existing result if not comparison is needed
@@ -185,7 +185,7 @@ function getDataPointValues(contextObj, docObj, eFormsValuesMap) {
       //but optional:
       if (isDataOptional) {
         //return undefined to hold the position in the array of arguments
-        eFormsValuesMap.set(eformLabel, undefined);
+        argsPathListMap.set(eformLabel, undefined);
         //then continue to next iteration
         continue;
       } else {
@@ -209,7 +209,7 @@ function getDataPointValues(contextObj, docObj, eFormsValuesMap) {
     valueFromContext = typePathVal(dataType, valueFromContext);
 
     //add value to list after potentially applying a function on it.
-    eFormsValuesMap.set(eformLabel, valueFromContext);
+    argsPathListMap.set(eformLabel, valueFromContext);
   }
 }
 
@@ -290,27 +290,27 @@ function typePathVal(typepath, value) {
  * @param {String} concept concept id
  */
 async function getAncestors(schemeId, concept) {
+  //find URL from schemeId
+  let postUrl = "";
+  let preUrl = "https://";
+  let jsonPath = "";
 
-    //find URL from schemeId
-    let postUrl = "";
-    let preUrl = "https://";
-    let jsonPath = "";
-
-    switch (schemeId) {
-      default:
-        postUrl = SNOMEDCT +
-          "/snowstorm/snomed-ct/browser/MAIN/concepts/" +
-          concept +
-          "/ancestors";
-        jsonPath = `$.conceptId`;
-        break;
-    }
-    try {
-    let res = await  got(preUrl + postUrl, { json: true });
+  switch (schemeId) {
+    default:
+      postUrl =
+        SNOMEDCT +
+        "/snowstorm/snomed-ct/browser/MAIN/concepts/" +
+        concept +
+        "/ancestors";
+      jsonPath = `$.conceptId`;
+      break;
+  }
+  try {
+    let res = await got(preUrl + postUrl, { json: true });
     return getDataFromContext(jsonPath, res.body);
-    } catch(err){
-      throw new ErrorHandler(500, err);
-    }   
+  } catch (err) {
+    throw new ErrorHandler(500, err);
+  }
 }
 
 /**
@@ -321,7 +321,6 @@ async function getAncestors(schemeId, concept) {
  * @returns array
  */
 function findReferencesInContext(hookContext, refsList, actObj) {
-
   //check for properties
   if (
     !(
@@ -337,8 +336,8 @@ function findReferencesInContext(hookContext, refsList, actObj) {
     );
 
   //JSONpath is expected to be written with 2 placeholders: var1 and var2
-  let xPathStr = actObj[details][xpath] ;
-  let typing = actObj[details][typePath] ;
+  let xPathStr = actObj[details][xpath];
+  let typing = actObj[details][typePath];
 
   //list of results that will replace the list of arguments at the given index of the general argsList array
   let tempList = new Array();
@@ -365,7 +364,7 @@ function findReferencesInContext(hookContext, refsList, actObj) {
     tempList.push(res);
   }
   //flatten list with referenced values
-  tempList = flat(tempList,1);
+  tempList = flat(tempList, 1);
 
   //typing of values
   //replace args with new data list
@@ -388,13 +387,17 @@ function fetchArgumentVal(dataPathMap, param) {
  * @param {array} funListAction array with functions
  * @param {Map} dataPathsValMap map with data extracted from hook context referenced by dataPaths' parameter field
  */
-async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsValMap) {
+async function applyActions(
+  hookCntxtObj,
+  outputObj,
+  funListAction,
+  dataPathsValMap
+) {
   //if empty, there are no actions to be applied at this moment
   if (funListAction == []) return;
 
   //apply mid-process action to values in list of arguments
   for (const actionObject of funListAction) {
-    //TODO: revise changes to schema. now we do not apply indices
     //name of function
     let operatorName;
     //check for properties action and details
@@ -468,10 +471,6 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
         //Returns an array.
         let args2Values = getDataFromContext(jsonPathArg2, outputObj);
 
-        logger.info(
-          `Values extracted from arg2 in output: ${JSON.stringify(args2Values)}`
-        );
-
         //apply operation for each extracted concept and list of concepts extracted
         //from hook context
         //if succeeds, add concept Id to a list
@@ -479,9 +478,7 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
         //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
         let args1Values = dataPathsValMap.get(firstArgLbl);
-        logger.info(
-          `Values extracted from arg1 in output: ${JSON.stringify(args1Values)}`
-        );
+        
         //isAncestor_eq expects a list of conceptIds to check
         //link lists or add item to list
         let conceptIdList = new Array();
@@ -491,30 +488,30 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
           conceptIdList.push(args1Values);
         }
 
-
-        //retrieve a list of all ancestors for all concept s
-        let allAncestors =  await Promise.all( 
-          conceptIdList.map( async conceptId => {
+        //retrieve a list of all ancestors for all concepts
+        let allAncestors = await Promise.all(
+          conceptIdList.map(async (conceptId) => {
             //logger.info(`conceptId is ${conceptId}`);
-           return getAncestors(codeSystId, conceptId) ;
-        }));
+            return getAncestors(codeSystId, conceptId);
+          })
+        );
         //add the concepts also
         allAncestors.push(conceptIdList);
         //flatten
-        allAncestors = flat(allAncestors,1);
+        allAncestors = flat(allAncestors, 1);
 
         newVal = new Array();
 
         logger.info(`allAncestors is ${JSON.stringify(allAncestors)}`);
 
-        for(let index=0;index<args2Values.length;index++){
+        for (let index = 0; index < args2Values.length; index++) {
           let conceptId = args2Values[index];
           logger.info(`parent conceptId is ${conceptId}`);
           logger.info(`is ancestor ${allAncestors.includes(conceptId)}`);
-          if(allAncestors.includes(conceptId)) newVal.push(conceptId);
+          if (allAncestors.includes(conceptId)) newVal.push(conceptId);
         }
-        
-        logger.info(`newVal is ${JSON.stringify(newVal)}`);
+
+        logger.info(`isSubClass: arg1 has values ${JSON.stringify(args1Values)}. arg2 has values ${JSON.stringify(args2Values)}. Matched ancestors are ${JSON.stringify(newVal)}`);
 
         //TODO: when evaluating, check whether any ancestorConceptid is in the list of arguments
         break;
@@ -526,7 +523,7 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
           dataPathsValMap.get(firstArgLbl),
           actionObject
         );
-        logger.info(`referenced values are ${newVal}`);
+        logger.info(`FindRef: ${firstArgLbl} has selection ${dataPathsValMap.get(firstArgLbl)}. Referenced values are ${newVal}`);
         break;
       /////////////
       case comparison:
@@ -572,7 +569,7 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
               )} on its LHS parameter (array). Check Request body or JSONpath`
             );
         }
-
+        //compare with respect to symbol
         switch (comparisonSymbol) {
           case "eq":
             newVal = lhsArg === rhsArg;
@@ -598,10 +595,11 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
           // newVal = (Array.isArray(lhsArg)) ?
         }
         logger.info(
-          `LHS value is ${lhsArg} and RHS value is ${rhsArg} and comparison symbol ${comparisonSymbol} for  ${firstArgLbl} and ${secondArgLbl}, respectively. The result is ${newVal}.`
+          `Comparison: ${firstArgLbl} value is ${lhsArg}. ${secondArgLbl} value is ${rhsArg}. symbol is ${comparisonSymbol}. Comparison result is ${newVal}.`
         );
         break;
       ////////////////
+      //user-defined functions. to be named here to activate them.
       default:
         ///name of user-defined functions. Extend by adding label and how to apply function//
         switch (operatorName) {
@@ -633,11 +631,11 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
             }
 
             newVal = arr_diff_nonSymm(arr1, arr2);
-            //the non-updated argument(s) must be removed so it does not show as a result
-            //listOfArgs[indexArr[1]] = undefined;
             break;
-        }
-    } //endOfSwitch
+        } //endOf operatorName Switch
+        logger.info(`Function: function ${operatorName} returns ${newVal}.`)
+      break;
+    } //endOf main Switch
 
     //replace argument with resulting value
     dataPathsValMap.set(firstArgLbl, newVal);
@@ -648,37 +646,37 @@ async function applyActions(hookCntxtObj, outputObj, funListAction, dataPathsVal
 
 /**
  * @param {Model} model model of db schema
- * @param {string} key value of parameter field
- * @param {object} actionsObj objecto containing actions and arguments
+ * @param {string} keyParam parameter label
+ * @param {object} actionsObj object containing actions and arguments
  * @returns {Array} a (possibly flattened) array with results
  */
 async function getOutcomeList(
   model,
-  key,
-  { funListAction = [], actions = [], argsPathList = [], argsoutcomeList = [] }
+  keyParam,
+  { funListAction = [], actions = [], argsPathListMap = [], argsOutcomeList = [] }
 ) {
   //SPECIAL CASES
+ logger.info(`keyParam in getOutcomeList is ${keyParam}`);
 
-  //var holding result for special cases;
-  let resArr;
   //if argsoutcomeList is empty,
   //then the purpose is to return the fetched (and possibly modified by user-defined functs)
   //value(s) from the hook context.
-  if (argsoutcomeList.length === 0) {
+  if (argsOutcomeList.length === 0 || actions.length === 0) {
+    let resArr = new Array();
     //remove any undefined value from the argsPathList array before returning
-    resArr = argsPathList.filter((element) => element !== undefined);
-    //if there are more than one elem, send array as it is (possibly array of arrays); otherwise, flatten array into a single array
-    return resArr.length > 1 ? resArr : flat(resArr, 1);
+    argsPathListMap.forEach( (value, key, map) => {
+      if(value !== undefined) resArr.push(value);
+    } );
+    // flatten array into a single array
+    return flat(resArr, 1);
   }
 
   //Case where no data required to be extracted but there is some constant value that must be added for this router, regardless.
   //Then return outcome values from argsLhsList at index 0, as there is no reason to have more items in the array
   if (
-    argsPathList.length === 0 ||
-    argsPathList.every((elemn) => elemn === undefined)
+    argsPathListMap.size === 0
   ) {
-    resArr = argsoutcomeList[0][outcome];
-    return flat(resArr, 1);
+    return argsOutcomeList[0][outcome];
   }
 
   //now for each specific action:
@@ -691,9 +689,9 @@ async function getOutcomeList(
 
   //for each action in this parameter
   for (const actionObj of actions) {
-    //fetch lhs and rhs values as args.
-    //Currently, we operate with 2 arguments, one from the expected result to be compared with
-    //and another from the possibly modified argument. This is an array and it may contain more than
+    //fetch lhs (arg1) and rhs (arg2) values as args.
+    //Currently, we operate with 2 arguments, one from the output object to be compared with
+    //and another from the possibly modified data path value(s). This is an array and it may contain more than
     //one argument. If so, it means a comparison between arguments was already done and the result has been
     //stored in argument at index 0
 
@@ -701,155 +699,102 @@ async function getOutcomeList(
     if (
       !(
         actionObj.hasOwnProperty(details) ||
-        actionObj[details].hasOwnProperty(rhsArg) ||
-        actionObj[details].hasOwnProperty(pathList_label) ||
-        argsPathList.hasOwnProperty(lhsArgIndex)
+        actionObj[details].hasOwnProperty(arg1) ||
+        actionObj[details].hasOwnProperty(arg2)
       )
     )
       throw new ErrorHandler(
         500,
-        `Expected properties are missing from the actionList on the DB template`
+        `Expected properties are missing from the actionList on the DB template for outcome related operations`
       );
 
     //fetch their indices first:
 
-    //by definition, rhsArg is not of array type
-    let rhsArgIndex = actionObj[details][rhsArg];
+    //the label in output
+    let outputPropLbl = actionObj[details][arg2];
 
-    //by definition, pathList_label is an array and the value at index 0 is used
-    let lhsArgIndex = actionObj[details][pathList_label][0];
+    //the key for fetching the lhs argument
+    let lhsArgKey = actionObj[details][arg1];
 
     //Next, use the lhs index to get the value for the lhs. Note that rhs could have many results to select from
-    let aLHSVal = argsPathList[lhsArgIndex];
+    let aLHSVal = argsPathListMap.get(lhsArgKey);
 
     //Now we check whether the arguments is undefined, if it is, we implicitly take it as a positive result -we added undefined to hold a position- and skip to next action
     if (aLHSVal === undefined) continue;
 
-    //check whether we are working with an element or a singleton array
-    let isSingletonLHSValue =
-      Array.isArray(aLHSVal) && aLHSVal.length < 2 ? true : false;
-    //if the argument is wrap in a singleton array, unwrap
-    aLHSVal = isSingletonLHSValue ? aLHSVal[0] : aLHSVal;
+    //convert arg1 into an array. Then, transform as required by actions.
+    if (!Array.isArray(aLHSVal) ) aLHSVal = [aLHSVal];
 
-    //now test again for the updated value.
-    //At this point We have either a primitive value or an array of size gt 1
-    let isLHSValList = Array.isArray(aLHSVal);
-
-    logger.info(
-      `indices and values for lhs and rhs respectively are: index lhs ${lhsArgIndex} and rhs ${rhsArgIndex}. Value lhs ${JSON.stringify(
-        aLHSVal
-      )}`
-    );
+    //keep track of whether it is a singleton
+    let isSingletonLHSValue = aLHSVal.length < 2 ? true : false;
 
     //get the name of the operation
     let actionName = actionObj[action];
 
     //If name of the operation is comparison, replace by the comparison operation sign
-    if (actionName === comparison) {
-      //replace with given comparison sign, unless arguments array is not a singleton
-      actionName = actionObj[details][compare];
+    if (actionName === Qomparison) {
+      //replace with given comparison sign
+      actionName = actionObj[details][symbol];
     }
-
-    logger.info("name of action is " + actionName);
 
     ///now construct the query//
 
     //projection field
     //this is the RHS value
     //by default they are wrapped in a List
-    let arrayElemAtRhs = {
-      $arrayElemAt: ["$$resultObject." + argList, rhsArgIndex],
-    };
+    let arrElemAtOutput =  "$$resultObject." + queryArgs + "." + outputPropLbl ;
 
     //object for the comparison
-    let compObj; //TODO: comparison between 2 params and then result. Use param at index 0 with result
+    let compObj; //TODO: comparison between 2 params and then result
 
     //at this point we have as valueAtPathIndex an array w length > 1 or a primitive value
     switch (actionName) {
       case "eq":
         compObj = {
-          $eq: [aLHSVal, arrayElemAtRhs],
+          $eq: [aLHSVal, arrElemAtOutput],
         };
         break;
       case "gte":
         compObj = {
-          $gte: [aLHSVal, arrayElemAtRhs],
+          $gte: [aLHSVal, arrElemAtOutput],
         };
         break;
       case "gt":
         compObj = {
-          $gt: [aLHSVal, arrayElemAtRhs],
+          $gt: [aLHSVal, arrElemAtOutput],
         };
         break;
       case "lte":
         compObj = {
-          $lte: [aLHSVal, arrayElemAtRhs],
+          $lte: [aLHSVal, arrElemAtOutput],
         };
         break;
       case "lt":
         compObj = {
-          $lt: [aLHSVal, arrayElemAtRhs],
+          $lt: [aLHSVal, arrElemAtOutput],
         };
         break;
-
-      case "inRHS": //RHS is the outcomeList
-        //element in outcomeList.argList at index i, exists in array at pathList index i'
-
+      case "in": //RHS is the outcomeList
+        //element in output.queryArgs.[arg2] is an array by default. Test it has more than one arg
         //2 cases:
         //case 1: LHS is not an array
-        if (!isLHSValList) {
-          compObj = {
-            $cond: [
-              //check whether the rhs is an array of values
-              { $isArray: [arrayElemAtRhs] },
-              //if it is, find whether LHS value exists in RHS array
-              { $in: [aLHSVal, arrayElemAtRhs] },
-              //otherwise find whether both elems are equal
-              { $eq: [aLHSVal, arrayElemAtRhs] },
-            ],
-          };
+        if (isSingletonLHSValue) {
+          compObj = { $in: [aLHSVal[0], arrElemAtOutput] }
         } else {
-          //case 2: LHS is an array
-          compObj = {
-            $cond: [
-              //check whether the rhs is an array of values
-              { $isArray: [arrayElemAtRhs] },
-              //if it is, find whether the LHS array is a subset of the RHS array
-              { $setIsSubset: [aLHSVal, arrayElemAtRhs] },
-              //otherwise this is false since the LHS array is by def > 1 and RHS is a primitive val
-              false,
-            ],
-          };
+          //case 2: LHS is an array of size > 1
+          // find whether the LHS array is a subset of the RHS array
+          compObj = { $setIsSubset: [aLHSVal, arrElemAtOutput] }
         }
         break;
-      case "inLHS":
+      case "inLhs":
       case isAncestor_eq:
-        //element in array at pathList index i', exists in outcomeList.argList at index i
-        //if element in array at pathList index i' is an array, then by default of algorithm it has size greater than 1 and the operation is a subsetOf
-        if (isLHSValList) {
-          compObj = {
-            $cond: [
-              { $isArray: [arrayElemAtRhs] },
-              { $setIsSubset: [arrayElemAtRhs, aLHSVal] },
-              //if it is not an array but the LHS is, then check whether the RHS exists in the LHS array
-              { $in: [arrayElemAtRhs, aLHSVal] },
-            ],
-          };
-        } else {
-          //lhs arg is not an array
-          compObj = {
-            $cond: [
-              { $isArray: [arrayElemAtRhs] },
-              //if rhs is an array then this is false
-              false,
-              //if both are not arrays, this is an eq comparison
-              { $eq: [aLHSVal, arrayElemAtRhs] },
-            ],
-          };
-        }
-
+      case "subSetOfLhs":
+          compObj = { $setIsSubset: [arrElemAtOutput, aLHSVal] }
         break;
-    }
+      case "subSetOf":
+       compObj = { $setIsSubset: [aLHSVal, arrElemAtOutput] }
+        break;
+    }//endOf switch
     //add elemMatch to object
     conditionList.push(compObj);
     //logger.info("Condition is " + JSON.stringify(compObj));
@@ -865,26 +810,26 @@ async function getOutcomeList(
   //query databse
   try {
     let resultArr = await model.aggregate([
-      { $match: { [paramName]: key } },
+      { $match: { [paramName]: keyParam } },
       {
         $project: {
-          outcomeList: {
+          matchedItems: {
             $filter: {
               input: "$" + outcomeList,
               as: "resultObject",
               cond: conditionObj,
-            },
-          },
-        },
+            }
+          }
+        }
       },
       {
         $group: {
           _id: "$_id",
           results: {
-            $push: { $concatArrays: ["$" + outcomeList + "." + outcome] },
-          },
-        },
-      },
+            $addToSet: `$matchedItems.` + outcome
+          }
+        }
+      }
     ]);
 
     //flatten outcome 2 layers down max items in result
@@ -892,7 +837,7 @@ async function getOutcomeList(
     mergedResults = flat(resultArr[0].results[0], 2);
   } catch (error) {
     logger.error(
-      `object ${key} failed  to convert results using the DB:  ${error}`
+      `object ${keyParam} failed  to convert results using the DB:  ${error}`
     );
     throw error;
   }

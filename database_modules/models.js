@@ -191,7 +191,7 @@ const paramSchema = new mongoose.Schema(
                 type: String,
                 required: false
               },
-              //case comparison and function
+              //case comparison and function symbol
               symbol: {
                 type: String,
                 required: false,

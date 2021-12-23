@@ -21,7 +21,8 @@ comparison : "comparison",
 Qomparison : "Qomparison",
 //compare : "compare",
 findRef : "findRef",
-argList : "rhsArg",
+argList : "queryArgs",
+queryArgs : "queryArgs",
 //parameters
  medsGenParam : 'medications_general', medsSelectParam : 'medications_user_selection',
  //labels to find templates on MongoDb
@@ -37,7 +38,7 @@ entryField: "entryObject_property",
 entryTemplate: "entryObject",
 patientId: "patientId",
 //result object fields
-datalist: 'dataList',
+datalist: 'data',
 ciglist: 'cigList',
 isAncestor_eq: "subClassOf",
 codeSyst: "codeSystemId"

@@ -21,17 +21,23 @@ router.get("/cigModel/:cigId",
 /* POST trigger some hook attached to some CIG authoring tool */
 router.post(
   '/:hook/cigModel/:cigId',
-  asyncMiddleware(fetchParams)
-  //send data back to client
-     //res.status(200).json(result)
+  asyncMiddleware(fetchParams),
+  //here the function to connect ot CDS SERVICE MGMT
+  (req,res, next) => {
+         //send data back to client
+     res.status(200).json(res.locals);
+  }
 );
 
 /* POST trigger some hook attached to some CIG authoring tool */
 router.post(
       '/:hook',
       asyncMiddleware(fetchParams),
-      //send data back to client
-      //res.status(200).json(res.locals.cdsParams)
+      //here the function to connect ot CDS SERVICE MGMT
+      (req,res,next) => {
+            //send data back to client
+        res.status(200).json(res.locals);
+     }
     );
 
 module.exports = router;
