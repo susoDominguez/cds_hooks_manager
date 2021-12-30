@@ -37,9 +37,22 @@ const logger = require("../config/winston");
 const { Model } = require("mongoose");
 const got = require("got");
 const qs = require("querystring");
-const { SNOMEDCT } = process.env;
-
+const { SNOMEDCT, CDS_SERVICES_MS_HOST, CDS_SERVICES_MS_PORT, CDS_SERVICES_MS_PATH } = process.env;
+//cds services manager url
+const url_CdsServices = `https://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/${CDS_SERVICES_MS_PATH}/`;
 ///////////////////////////////////////////////////////
+async function callCdsServicesManager( requestBody ) {
+  
+  try {
+    const {body, statusCode} = await got.post(url_CdsServices, { json: requestBody });
+    if (statusCode !== 200 || body.error) 
+        throw new ErrorHandler(500, body.error || 'Oops. Something went wrong! Try again please.');  
+    return body;
+  } catch( err ) { 
+    throw new ErrorHandler(500, "post request in callCdsServicesManager fail: " + (err.response?  err.response.body : err) );
+  }
+  
+}
 
 /**
  * creates an object containing values and actions to be applied to values
@@ -852,4 +865,5 @@ module.exports = {
   getOutcomeList,
   applyActions,
   addFunctionsFromTemplateToArgsObject,
+  callCdsServicesManager
 };

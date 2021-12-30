@@ -1,12 +1,9 @@
 var express = require("express");
 var router = express.Router();
-const {
-} = process.env;
-const { fetchParams } = require("../middleware/data-processing-component");
-const { isAncestorEq } = require("../middleware/data-processing-module");
+const { fetchParams, requestCdsServices } = require("../middleware/data-processing-component");
 const { getCdsServices, getCdsServicesByCig } = require("../database_modules/service_finders");
 const asyncMiddleware = require("../lib/asyncMiddleware");
-const logger = require('../config/winston');
+//const logger = require('../config/winston');
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -22,22 +19,14 @@ router.get("/cigModel/:cigId",
 router.post(
   '/:hook/cigModel/:cigId',
   asyncMiddleware(fetchParams),
-  //here the function to connect ot CDS SERVICE MGMT
-  (req,res, next) => {
-         //send data back to client
-     res.status(200).json(res.locals);
-  }
+  asyncMiddleware(requestCdsServices)
 );
 
 /* POST trigger some hook attached to some CIG authoring tool */
 router.post(
       '/:hook',
       asyncMiddleware(fetchParams),
-      //here the function to connect ot CDS SERVICE MGMT
-      (req,res,next) => {
-            //send data back to client
-        res.status(200).json(res.locals);
-     }
+      asyncMiddleware(requestCdsServices)
     );
 
 module.exports = router;

@@ -5,6 +5,7 @@ const {
   getOutcomeList,
   applyActions,
   addFunctionsFromTemplateToArgsObject,
+  callCdsServicesManager
 } = require("./data-processing-module");
 const { getModelbyCig } = require("../database_modules/models");
 const logger = require("../config/winston");
@@ -150,5 +151,9 @@ module.exports = {
 
     //call next middleware
     next();
+  },
+  requestCdsServices: async function (req, res, next) {
+       const data = await callCdsServicesManager(res.locals);
+       res.status(200).json(data);
   }
 };

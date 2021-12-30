@@ -4,7 +4,7 @@
  * Module dependencies.
  */
 var app = require('../app');
-var debug = require('debug')('dss-road2h:server');
+var debug = require('debug')('cds_hooks_manager:server');
 var http = require('http');
 const gracefulShutdown = require('http-graceful-shutdown');
 
