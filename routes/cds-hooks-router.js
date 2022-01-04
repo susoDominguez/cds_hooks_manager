@@ -22,7 +22,7 @@ router.post(
   asyncMiddleware(requestCdsServices)
 );
 
-/* POST trigger some hook attached to some CIG authoring tool */
+/* POST trigger some hook non-attached to some CIG authoring tool */
 router.post(
       '/:hook',
       asyncMiddleware(fetchParams),

@@ -36,22 +36,56 @@ const { ErrorHandler } = require("../lib/errorHandler");
 const logger = require("../config/winston");
 const { Model } = require("mongoose");
 const got = require("got");
+const axios = require("axios");
 const qs = require("querystring");
-const { SNOMEDCT, CDS_SERVICES_MS_HOST, CDS_SERVICES_MS_PORT, CDS_SERVICES_MS_PATH } = process.env;
+const {
+  SNOMEDCT,
+  CDS_SERVICES_MS_HOST,
+  CDS_SERVICES_MS_PORT,
+  CDS_SERVICES_MS_PATH,
+} = process.env;
 //cds services manager url
-const url_CdsServices = `https://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/${CDS_SERVICES_MS_PATH}/`;
+//not using SSL yet
+const url_CdsServices = `http://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/${CDS_SERVICES_MS_PATH}/`;
 ///////////////////////////////////////////////////////
-async function callCdsServicesManager( requestBody ) {
-  
+/**
+ *
+ * @param {string} hookId
+ * @param {string} cigId
+ * @param {Map} data
+ * @returns response from cds services manager microservice
+ */
+async function callCdsServicesManager(hookId, cigId, reqData) {
+  const cigModel = hookId + (cigId ? `/cigModel/${cigId}` : ``);
+  //construct URL
+  const baseURL = url_CdsServices + cigModel;
+
+  //create config
+  let config = {
+    method: "post",
+    url: baseURL,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    data: reqData,
+  };
   try {
-    const {body, statusCode} = await got.post(url_CdsServices, { json: requestBody });
-    if (statusCode !== 200 || body.error) 
-        throw new ErrorHandler(500, body.error || 'Oops. Something went wrong! Try again please.');  
-    return body;
-  } catch( err ) { 
-    throw new ErrorHandler(500, "post request in callCdsServicesManager fail: " + (err.response?  err.response.body : err) );
+    const response = await axios(config);
+    if (response.status >= 400 )
+      throw new ErrorHandler(
+        500,
+       "Oops. Something went wrong! Try again please."
+      );
+    return response.data;
+
+  } catch (err) {
+
+    throw new ErrorHandler(
+      500,
+      "post request in callCdsServicesManager fail: " +
+        (err.response ? err.response.body : err)
+    );
   }
-  
 }
 
 /**
@@ -162,7 +196,7 @@ function getDataPointValues(contextObj, docObj, argsPathListMap) {
     //string with the Jpath to value and the default value
     let jpathStr = aPath[xpath];
 
-    //obtain value from request body. If not found, it returns undefined.
+    //obtain value from request body. If not found, JSONATA returns undefined.
     //Also could be undefined on purpose to add user-defined values in default.
     let valueFromContext =
       jpathStr && jpathStr.trim() !== ""
@@ -491,7 +525,7 @@ async function applyActions(
         //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
         let args1Values = dataPathsValMap.get(firstArgLbl);
-        
+
         //isAncestor_eq expects a list of conceptIds to check
         //link lists or add item to list
         let conceptIdList = new Array();
@@ -524,7 +558,13 @@ async function applyActions(
           if (allAncestors.includes(conceptId)) newVal.push(conceptId);
         }
 
-        logger.info(`isSubClass: arg1 has values ${JSON.stringify(args1Values)}. arg2 has values ${JSON.stringify(args2Values)}. Matched ancestors are ${JSON.stringify(newVal)}`);
+        logger.info(
+          `isSubClass: arg1 has values ${JSON.stringify(
+            args1Values
+          )}. arg2 has values ${JSON.stringify(
+            args2Values
+          )}. Matched ancestors are ${JSON.stringify(newVal)}`
+        );
 
         //TODO: when evaluating, check whether any ancestorConceptid is in the list of arguments
         break;
@@ -536,7 +576,11 @@ async function applyActions(
           dataPathsValMap.get(firstArgLbl),
           actionObject
         );
-        logger.info(`FindRef: ${firstArgLbl} has selection ${dataPathsValMap.get(firstArgLbl)}. Referenced values are ${newVal}`);
+        logger.info(
+          `FindRef: ${firstArgLbl} has selection ${dataPathsValMap.get(
+            firstArgLbl
+          )}. Referenced values are ${newVal}`
+        );
         break;
       /////////////
       case comparison:
@@ -646,8 +690,8 @@ async function applyActions(
             newVal = arr_diff_nonSymm(arr1, arr2);
             break;
         } //endOf operatorName Switch
-        logger.info(`Function: function ${operatorName} returns ${newVal}.`)
-      break;
+        logger.info(`Function: function ${operatorName} returns ${newVal}.`);
+        break;
     } //endOf main Switch
 
     //replace argument with resulting value
@@ -666,10 +710,15 @@ async function applyActions(
 async function getOutcomeList(
   model,
   keyParam,
-  { funListAction = [], actions = [], argsPathListMap = [], argsOutcomeList = [] }
+  {
+    funListAction = [],
+    actions = [],
+    argsPathListMap = [],
+    argsOutcomeList = [],
+  }
 ) {
   //SPECIAL CASES
- logger.info(`keyParam in getOutcomeList is ${keyParam}`);
+  logger.info(`keyParam in getOutcomeList is ${keyParam}`);
 
   //if argsoutcomeList is empty,
   //then the purpose is to return the fetched (and possibly modified by user-defined functs)
@@ -677,18 +726,16 @@ async function getOutcomeList(
   if (argsOutcomeList.length === 0 || actions.length === 0) {
     let resArr = new Array();
     //remove any undefined value from the argsPathList array before returning
-    argsPathListMap.forEach( (value, key, map) => {
-      if(value !== undefined) resArr.push(value);
-    } );
+    argsPathListMap.forEach((value, key, map) => {
+      if (value !== undefined) resArr.push(value);
+    });
     // flatten array into a single array
     return flat(resArr, 1);
   }
 
   //Case where no data required to be extracted but there is some constant value that must be added for this router, regardless.
   //Then return outcome values from argsLhsList at index 0, as there is no reason to have more items in the array
-  if (
-    argsPathListMap.size === 0
-  ) {
+  if (argsPathListMap.size === 0) {
     return argsOutcomeList[0][outcome];
   }
 
@@ -736,7 +783,7 @@ async function getOutcomeList(
     if (aLHSVal === undefined) continue;
 
     //convert arg1 into an array. Then, transform as required by actions.
-    if (!Array.isArray(aLHSVal) ) aLHSVal = [aLHSVal];
+    if (!Array.isArray(aLHSVal)) aLHSVal = [aLHSVal];
 
     //keep track of whether it is a singleton
     let isSingletonLHSValue = aLHSVal.length < 2 ? true : false;
@@ -755,7 +802,7 @@ async function getOutcomeList(
     //projection field
     //this is the RHS value
     //by default they are wrapped in a List
-    let arrElemAtOutput =  "$$resultObject." + queryArgs + "." + outputPropLbl ;
+    let arrElemAtOutput = "$$resultObject." + queryArgs + "." + outputPropLbl;
 
     //object for the comparison
     let compObj; //TODO: comparison between 2 params and then result
@@ -792,22 +839,22 @@ async function getOutcomeList(
         //2 cases:
         //case 1: LHS is not an array
         if (isSingletonLHSValue) {
-          compObj = { $in: [aLHSVal[0], arrElemAtOutput] }
+          compObj = { $in: [aLHSVal[0], arrElemAtOutput] };
         } else {
           //case 2: LHS is an array of size > 1
           // find whether the LHS array is a subset of the RHS array
-          compObj = { $setIsSubset: [aLHSVal, arrElemAtOutput] }
+          compObj = { $setIsSubset: [aLHSVal, arrElemAtOutput] };
         }
         break;
       case "inLhs":
       case isAncestor_eq:
       case "subSetOfLhs":
-          compObj = { $setIsSubset: [arrElemAtOutput, aLHSVal] }
+        compObj = { $setIsSubset: [arrElemAtOutput, aLHSVal] };
         break;
       case "subSetOf":
-       compObj = { $setIsSubset: [aLHSVal, arrElemAtOutput] }
+        compObj = { $setIsSubset: [aLHSVal, arrElemAtOutput] };
         break;
-    }//endOf switch
+    } //endOf switch
     //add elemMatch to object
     conditionList.push(compObj);
     //logger.info("Condition is " + JSON.stringify(compObj));
@@ -831,18 +878,18 @@ async function getOutcomeList(
               input: "$" + outcomeList,
               as: "resultObject",
               cond: conditionObj,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       {
         $group: {
           _id: "$_id",
           results: {
-            $addToSet: `$matchedItems.` + outcome
-          }
-        }
-      }
+            $addToSet: `$matchedItems.` + outcome,
+          },
+        },
+      },
     ]);
 
     //flatten outcome 2 layers down max items in result
@@ -865,5 +912,5 @@ module.exports = {
   getOutcomeList,
   applyActions,
   addFunctionsFromTemplateToArgsObject,
-  callCdsServicesManager
+  callCdsServicesManager,
 };

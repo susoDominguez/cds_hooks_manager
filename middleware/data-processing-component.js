@@ -10,7 +10,7 @@ const {
 const { getModelbyCig } = require("../database_modules/models");
 const logger = require("../config/winston");
 const { ErrorHandler } = require("../lib/errorHandler");
-const { MONGODB_NON_CIG_DB } = process.env;
+//const { MONGODB_NON_CIG_DB } = process.env;
 const {
   paramName,
   cigInvolved,
@@ -36,7 +36,7 @@ module.exports = {
     logger.info("hookId is " + hookId);
 
     //CIG Model id extracted from route. If non-existent, use general DB for non-CIG-related hooks
-    let cigModel = req.params.cigId || "non-cig";
+    let cigModel = req.params.cigId || null;
     logger.info("CIG Model is " + cigModel);
 
     //hook context
@@ -142,18 +142,28 @@ module.exports = {
       );
     }//endOf for await loop
 
+    //add list of CIGs to Map
+    paramMap.set("cigsList", requiredCIGs);
     //Parameters to transfer to next middleware
-    res.locals.identifiedCigList = requiredCIGs; //possibly empty if not part of router to extract CIG data
-    res.locals.fetchDocMap = paramMap;
-    //parameters to send to CDS services for activating specific services
-    res.locals.hookId = hookId;
-    res.locals.cigModel = cigModel;
+    res.locals.hookData = paramMap;
 
     //call next middleware
     next();
   },
+  /**
+   * 
+   * @param {object} req request object
+   * @param {object} res response object
+   * @param {object} next callback
+   */
   requestCdsServices: async function (req, res, next) {
-       const data = await callCdsServicesManager(res.locals);
+      
+      //convert Map to object
+      let cdsData = JSON.stringify( Object.fromEntries(res.locals.hookData) );
+      logger.info(`cdsData is ${cdsData}`);
+      //send request
+       const data = await callCdsServicesManager(req.params.hook, req.params.cigId, cdsData);
+       //return response
        res.status(200).json(data);
   }
 };
