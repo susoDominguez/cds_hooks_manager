@@ -208,7 +208,7 @@ const paramSchema = new mongoose.Schema(
                 enum: ["boolean", "array", "string", "date", "number"],
                 default: "string",
               },
-              //find copncept relations: Terminology system
+              //find concept relations: Terminology system
               codeSystem: {
                 type: String,
                 required: false,
@@ -293,15 +293,17 @@ const serviceModel = servicesConnection.model("Cds-Service", cdsServiceSchema);
 
 /**
  *
- * @param {string} cigId CIG model.
+ * @param {string} cigId CIG model (possibly null).
  * @param {string} hookId hook id. Also, label of Collection in DB linked to CIG model
  * @returns
  */
 function getModelbyCig(cigId, hookId) {
 
   let Param = undefined;
+  //default database name for hooks which require no CIG tools
+  let cigTool = cigId? cigId : "non-cig";
   try {
-    Param = connectionsList.get(cigId).model("Parameter", paramSchema, hookId);
+    Param = connectionsList.get(cigTool).model("Parameter", paramSchema, hookId);
     if (Param === undefined)
       throw new Error(
         "constant CigSelect has not been instantiated with a Model"
