@@ -119,6 +119,7 @@ const paramSchema = new mongoose.Schema(
 const paramSchema = new mongoose.Schema(
   {
     parameter: { type: String, required: true, maxlength: 100 },
+    description: { type: String, required: true, default: "none"},
     cigInvolved: {
       type: [String],
       required: false,
@@ -130,6 +131,7 @@ const paramSchema = new mongoose.Schema(
       type: [
         {
           label: { type: String, required: true },
+          description: { type: String, required: false, default: "none"},
           Jpath: { type: String, required: true },
           typeOf: {
             type: String,
@@ -212,7 +214,7 @@ const paramSchema = new mongoose.Schema(
               codeSystem: {
                 type: String,
                 required: false,
-                enum: ["SCT", "LOINC", "READ"],
+                enum: ["SCT", "LOINC", "READ","ICD10"],
               },
             },
           },

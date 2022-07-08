@@ -7,12 +7,15 @@ const Schema = mongoose.Schema;
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
 const paramSchema = new Schema({
   parameter: { type: String, required: true, maxlength: 100 },
+  description: { type: String, required: true, default: "none"},
   cigInvolved: { type: [String], required: false, default: [], maxlength: 100 },
   //list of objects specifying where to find the data, their type and default values (possibly another Jsonpath) if data not found
   pathList: {
     type: [
       {
-        label: { type: String, required: true, },
+        label: { type: String, required: true },
+        description: { type: String, required: false, default: "none"},
+        parameter: { type: String, required: true },
         Jpath: { type: String, required: true, default: ""},
         typeOf: {
           type: String,

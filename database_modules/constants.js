@@ -24,7 +24,8 @@ findRef : "findRef",
 argList : "queryArgs",
 queryArgs : "queryArgs",
 //parameters
- medsGenParam : 'medications_general', medsSelectParam : 'medications_user_selection',
+ medsGenParam : 'medications_general',
+medsSelectParam : 'medications_user_selection',
  //labels to find templates on MongoDb
 dss: "dss-template",
 ehr: "ehr-template",

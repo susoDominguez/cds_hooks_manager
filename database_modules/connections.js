@@ -50,31 +50,35 @@ function makeNewConnection(uri) {
     return db;
 }
 
-//HOST and PORT of DB
+//HOST and PORT of MONGODB
 const host = ( MONGODB_HOST || "localhost");
 const port = ( MONGODB_PORT || "27017" );
-///CDS SERVICES DB CONNECTION
+///CDS SERVICES OFFERED: MONGODB CONNECTION
 const cds_services_db = ( MONGODB_CDS_SERVICES || "cds-services" );
-/// TMR DB CONNECTION
-const tmr_db = ( MONGODB_TMR_DB || "tmr-db" );
-/// NON-CIG DB CONNECTION
+/// NON-CIG MODEL: MONGODB CONNECTION
 const non_cig_db = ( MONGODB_NON_CIG_DB || "non-cig-db" );
+//ADD BELOW INTEGRATED CIG FORMALISMS MONGODB
+/// TMR MODEL:  MONGODB CONNECTION
+const tmr_db = ( MONGODB_TMR_DB || "tmr-db" );
 
 //cds services DB
 const servicesConnection = makeNewConnection(`mongodb://${host}:${port}/${cds_services_db}`);
 
-//tmr DB
-const tmrConnection = makeNewConnection(`mongodb://${host}:${port}/${tmr_db}`);
-
 //non-cig DB
 const nonCigConnection = makeNewConnection(`mongodb://${host}:${port}/${non_cig_db}`);
+
+//ADD BELOW INTEGRATED CIG FORMALISMS MONGODB CONNECTION
+//tmr model DB
+const tmrConnection = makeNewConnection(`mongodb://${host}:${port}/${tmr_db}`);
+
 
 //key-value list of available databases for CDS Services
 let connectionsList = new Map();
 
 //add new connections to MAP
-connectionsList.set("tmr",tmrConnection);
 connectionsList.set("non-cig",nonCigConnection);
+//add cig formalisms connections below
+connectionsList.set("tmr",tmrConnection);
 
 module.exports = {
     servicesConnection,
