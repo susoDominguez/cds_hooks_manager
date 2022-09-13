@@ -1,10 +1,10 @@
-const mongoose = require("mongoose");
-const { servicesConnection, connectionsList } = require("./connections");
-const logger = require("../config/winston");
-const { ErrorHandler } = require("../lib/errorHandler");
-//this is the subClassOf operator label
-const { isAncestor_eq } = require("./constants");
-//Define a schema
+import mongoose from "mongoose";
+import { servicesConnection, connectionsList } from "./connections.js";
+//import logger from "../config/winston.js";
+import { ErrorHandler } from "../lib/errorHandler.js";
+//this is the subClassOf operator lab.jsel
+import { isAncestor_eq } from "./constants.js";
+//Define a sche.jsma
 const Schema = mongoose.Schema;
 
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
@@ -317,7 +317,7 @@ function getModelbyCig(cigId, hookId) {
   return Param;
 }
 
-module.exports = {
+export {
   serviceModel,
   getModelbyCig,
 };

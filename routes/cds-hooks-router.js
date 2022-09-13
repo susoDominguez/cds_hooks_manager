@@ -1,8 +1,10 @@
-var express = require("express");
+import express from "express";
+import dpcPackgDefault from "../middleware/data-processing-component.js";
+const { fetchParams, requestCdsServices } = dpcPackgDefault;
+import serFindPackgDef from "../database_modules/service_finders.js";
+const  { getCdsServices, getCdsServicesByCig } = serFindPackgDef;
+import asyncMiddleware from "../lib/asyncMiddleware.js";
 var router = express.Router();
-const { fetchParams, requestCdsServices } = require("../middleware/data-processing-component");
-const { getCdsServices, getCdsServicesByCig } = require("../database_modules/service_finders");
-const asyncMiddleware = require("../lib/asyncMiddleware");
 //const logger = require('../config/winston');
 
 ////////////////////////////////////////////////////////////////////////
@@ -29,4 +31,4 @@ router.post(
       asyncMiddleware(requestCdsServices)
     );
 
-module.exports = router;
+export  {router};

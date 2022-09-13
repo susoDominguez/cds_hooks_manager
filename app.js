@@ -1,18 +1,21 @@
-const createError = require('http-errors');
-const express = require('express');
-const path = require('path');
-const cookieParser = require('cookie-parser');
-var helmet = require('helmet');
-const morgan = require('morgan');
-const logger = require('./config/winston');
-const { handleError } = require('./lib/errorHandler');
-const rateLimit = require('express-rate-limit');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-// Environment constiables
-require('dotenv').config();
-const cdsServicesRouter = require('./routes/cds-hooks-router.js');
-//const { initDb } = require('./database_modules/dbConnection_Mongoose');
+import express from 'express';
+import * as path from 'path';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import logger from './config/winston.js';
+import  { handleError } from './lib/errorHandler.js';
+import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import xss from 'xss-clean';
+// Environment vars
+import dotenv from 'dotenv';
+dotenv.config();
+import {router} from './routes/cds-hooks-router.js';
+//const { initDb } = import('./database_modules/dbConnection_Mongoose');
+import * as url from 'url';
+const __filename = url.fileURLToPath(import.meta.url);
+const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
 
 //create server
 const app = express();
@@ -53,7 +56,7 @@ app.get('/_health', (req, res) => {
 });
 
 //router
-app.use('/cds-services', limit, cdsServicesRouter);
+app.use('/cds-services', limit, router);
 
 // catch 404 and forward to error handler
 //app.use(function(req, res, next) {
@@ -93,4 +96,4 @@ app.use( function(err, req, res, next) {
   //res.render('error');
 });
 
-module.exports = app; //DEBUG=cds_hooks_manager:* npm run devstart
+export default app; //DEBUG=cds_hooks_manager:* npm run devstart

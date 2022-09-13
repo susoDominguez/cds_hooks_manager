@@ -1,7 +1,5 @@
-"use strict";
-
-const jsonata = require("jsonata");
-const {
+import jsonata from "jsonata";
+import {
   paramName,
   functLabel,
   argList,
@@ -25,19 +23,21 @@ const {
   symbol,
   arg1,
   arg2,
-} = require("../database_modules/constants.js");
-const flat = require("array.prototype.flat");
-const {
+} from "../database_modules/constants.js";
+import flat from "array.prototype.flat";
+import {
   arr_diff_nonSymm,
   calculate_age,
   getYearsFromNow,
-} = require("../lib/user-defined-functions");
-const { ErrorHandler } = require("../lib/errorHandler");
-const logger = require("../config/winston");
-const { Model } = require("mongoose");
-const got = require("got");
-const axios = require("axios");
-const qs = require("querystring");
+} from "../lib/user-defined-functions.js";
+import { ErrorHandler } from "../lib/errorHandler.js";
+import logger from "../config/winston.js";
+import mongoosePackg  from "mongoose";
+const {Model} = mongoosePackg;
+//const got from "got");
+import got from 'got';
+import axios from "axios";
+//const qs from "querystring";
 const {
   SNOMEDCT,
   CDS_SERVICES_MS_HOST,
@@ -907,7 +907,7 @@ async function getOutcomeList(
   return mergedResults;
 }
 
-module.exports = {
+export {
   getDataPointValues,
   getOutcomeList,
   applyActions,

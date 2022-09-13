@@ -1,6 +1,5 @@
-"use strict";
 const mongoose = require("mongoose");
-const { isAncestor_eq} = require("./constants")
+const { isAncestor_eq } = require("./constants")
 //Define a schema
 const Schema = mongoose.Schema;
 

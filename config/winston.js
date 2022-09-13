@@ -1,5 +1,9 @@
-var winston = require("winston");
-require("winston-mongodb");
+import * as winston from "winston";
+import pckg from "winston-mongodb";
+const {MongoDBTransportInstance, MongoDBConnectionOptions} = pckg;
+const { combine, timestamp, printf, json } = winston.format;
+
+//winston.add(new winston.transports.MongoDB(options));
 
 const { MONGODB_HOST, MONGODB_LOGS_PORT, MONGODB_LOGS } = process.env;
 
@@ -34,10 +38,10 @@ var options = {
     // A collection to save json formatted logs
     collection: "services_middleware",
     storeHost: true,
-    format: winston.format.combine(
-      winston.format.timestamp(),
+    format: combine(
+      timestamp(),
       // Convert logs to a json format
-      winston.format.json()
+      json()
     ),
   },
 };
@@ -60,4 +64,4 @@ logger.stream = {
   },
 };
 
-module.exports = logger;
+export default logger;

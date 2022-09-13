@@ -1,24 +1,22 @@
-"use strict";
-
-const {
+import {
   getDataPointValues,
   getOutcomeList,
   applyActions,
   addFunctionsFromTemplateToArgsObject,
   callCdsServicesManager
-} = require("./data-processing-module");
-const { getModelbyCig } = require("../database_modules/models");
-const logger = require("../config/winston");
-const { ErrorHandler } = require("../lib/errorHandler");
+} from "./data-processing-module.js";
+import { getModelbyCig } from "../database_modules/models.js";
+import logger from "../config/winston.js";
+import { ErrorHandler } from "../lib/errorHandler.js";
 //const { MONGODB_NON_CIG_DB } = process.env;
-const {
+import {
   paramName,
   cigInvolved,
   datalist,
   ciglist,
-} = require("../database_modules/constants.js");
+} from "../database_modules/constants.js";
 
-module.exports = {
+export default {
   /**
    * Using DB forms as guidance:
    * find and possibly convert data from hook context into new data

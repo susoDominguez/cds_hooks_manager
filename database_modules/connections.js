@@ -1,20 +1,12 @@
-"use strict";
-
-const mongoose = require('mongoose');
-const logger = require("../config/winston");
+import mongoose from 'mongoose';
+import logger from "../config/winston.js";
 
 const {
     MONGODB_HOST,
     MONGODB_PORT,
     MONGODB_CDS_SERVICES,
     MONGODB_TMR_DB,
-    MONGODB_NON_CIG_DB,
-    TREATMENT_SELECT_ROUTE,
-    TREATMENT_REVIEW_ROUTE,
-    CIGS_MERGE_ROUTE,
-    DB_PRECONDITIONS_ROUTE, 
-    TEMPLATES,
-    TEMPLATES_COPD
+    MONGODB_NON_CIG_DB
   } = process.env;
 
   const options = {
@@ -80,7 +72,7 @@ connectionsList.set("non-cig",nonCigConnection);
 //add cig formalisms connections below
 connectionsList.set("tmr",tmrConnection);
 
-module.exports = {
+export {
     servicesConnection,
     connectionsList
 };

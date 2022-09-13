@@ -3,10 +3,11 @@
 /**
  * Module dependencies.
  */
-var app = require('../app');
-var debug = require('debug')('cds_hooks_manager:server');
-var http = require('http');
-const gracefulShutdown = require('http-graceful-shutdown');
+import app from '../app.js'
+import createDebugbMessages from "debug";
+var debug = createDebugbMessages('cds_hooks_manager:server');
+import http from 'http';
+import gracefulShutdown from 'http-graceful-shutdown';
 
 /**
  * Get port from environment and store in Express.

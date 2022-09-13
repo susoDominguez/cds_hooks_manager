@@ -1,8 +1,9 @@
-const { serviceModel } = require("./models");
+import  { serviceModel } from "./models.js";
+//const  = modPckgDef;
 //const { servicesConnection, tmrConnection } = require("./connections");
-const { ErrorHandler } = require("../lib/errorHandler");
+import { ErrorHandler } from "../lib/errorHandler.js";
 
-module.exports = {
+export default {
 
   getCdsServicesByCig: async function (req, res, next) {
     //params holds the captured values in the route path
