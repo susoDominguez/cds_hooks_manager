@@ -32,8 +32,8 @@ import {
 } from "../lib/user-defined-functions.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
 import logger from "../config/winston.js";
-import mongoosePackg  from "mongoose";
-const {Model} = mongoosePackg;
+import mongoosePackg from "mongoose";
+const { Model } = mongoosePackg;
 //const got from "got");
 import got from 'got';
 import axios from "axios";
@@ -71,10 +71,10 @@ async function callCdsServicesManager(hookId, cigId, reqData) {
   };
   try {
     const response = await axios(config);
-    if (response.status >= 400 )
+    if (response.status >= 400)
       throw new ErrorHandler(
         500,
-       "Oops. Something went wrong! Try again please."
+        "Oops. Something went wrong! Try again please."
       );
     return response.data;
 
@@ -83,7 +83,7 @@ async function callCdsServicesManager(hookId, cigId, reqData) {
     throw new ErrorHandler(
       500,
       "post request in callCdsServicesManager fail: " +
-        (err.response ? err.response.body : err)
+      (err.response ? err.response.body : err)
     );
   }
 }
@@ -94,7 +94,7 @@ async function callCdsServicesManager(hookId, cigId, reqData) {
  * @returns {object} object containig values and functions to be applied to those values
  */
 function addFunctionsFromTemplateToArgsObject(eform) {
-  //get actions
+  //get actions from MongoDb doc
   let actionArray = eform[actionList];
 
   //check we are working w/array
@@ -125,10 +125,10 @@ function addFunctionsFromTemplateToArgsObject(eform) {
         //obj[action] !== isAncestor_eq &&
         obj[action] !== comparison
     ),
-    //Map of arguments where the key is the parameter label and the value is the PathList object.
+    //Map of arguments where the key is the parameter label and the value is the dataPath object.
     //To be extracted from clinical context as part of request
     argsPathListMap: new Map(),
-    //list of assessed results. to be compared with arguments to select zero or more results if triggered.
+    //Output list, potentially a list of constraint satisfaction objects to be compared with arguments for selecting zero or more outcomes if triggered.
     argsOutcomeList: eform[outcomeList],
   };
 
@@ -146,7 +146,7 @@ function addFunctionsFromTemplateToArgsObject(eform) {
 }
 
 /**
- * add parameter and derived value from e-forms to a Map
+ * Fetches parameter value from hook context using information on MongoDB doc. Then, adds parameter and associated value to an instance of Map
  * @param {object} contextObj context as taken from request
  * @param {object} docObj e-form object
  * @param {Map} argsPathListMap Map from eform objects to returned values
@@ -163,7 +163,8 @@ function getDataPointValues(contextObj, docObj, argsPathListMap) {
   if (!Array.isArray(pathListObj))
     throw new ErrorHandler(500, "field paths expected to be an array.");
 
-  //for each path in pathList. If path is empty list, deal with it later
+  //for each path in pathList.
+  //If path is empty list, deal with it later
   for (const aPath of pathListObj) {
     //check it has all the expected properties
     if (
@@ -171,43 +172,43 @@ function getDataPointValues(contextObj, docObj, argsPathListMap) {
         aPath.hasOwnProperty(typePath) ||
         aPath.hasOwnProperty(isMandatory) ||
         aPath.hasOwnProperty(xpath) ||
-        aPath.hasOwnProperty(labelTemplate) ||
-        aPath.hasOwnProperty(defaultVal)
+        aPath.hasOwnProperty(labelTemplate)
       )
     )
       throw new ErrorHandler(
         500,
-        `MongoDB: Parameter ${
-          docObj[paramName]
-        } is missing a required attribute in Property ${pathList}. ${
-          aPath.hasOwnProperty(labelTemplate)
-            ? " Label value is " + aPath[labelTemplate]
-            : ""
+        `MongoDB: Parameter ${docObj[paramName]
+        } is missing a required attribute in Property ${pathList}. ${aPath.hasOwnProperty(labelTemplate)
+          ? " Label value is " + aPath[labelTemplate]
+          : ""
         }`
       );
 
-    //label of e-form
-    let eformLabel = aPath[labelTemplate];
+    //default value property on aPath is not mandatory
+    //if it doesnt exists, add an undefined value
+    if(!aPath.hasOwnProperty(defaultVal)){
+      aPath[defaultVal] = undefined;
+    }
+    //label of dataPath obj in MongoDb doc
+    let aPath_label = aPath[labelTemplate];
     //type of path
-    let dataType = aPath[typePath];
+    let aPath_datatype = aPath[typePath];
     //is this data optional?
     let isDataOptional = !aPath[isMandatory];
 
     //string with the Jpath to value and the default value
-    let jpathStr = aPath[xpath];
+    let jpathQueryExprs = aPath[xpath];
 
     //obtain value from request body. If not found, JSONATA returns undefined.
     //Also could be undefined on purpose to add user-defined values in default.
     let valueFromContext =
-      jpathStr && jpathStr.trim() !== ""
-        ? getDataFromContext(jpathStr, contextObj)
-        : undefined;
+      jpathQueryExprs ? getDataFromContext(jpathQueryExprs,contextObj) : undefined;
 
     //if undefined, get the default value which could also be undefined or a JSONpath of the same type as the main one
     if (valueFromContext === undefined) {
-      //get default value (possibly undefined or "-1") and check whether it is also a path to data in a resource
+      //get default value (possibly undefined) 
       let defaultValue = aPath[defaultVal];
-
+      //and check whether it is also a path to data in a resource
       // is it an array? convert into a JSON array
       if (("" + defaultValue).trim().startsWith("["))
         defaultValue = JSON.parse(defaultValue);
@@ -215,37 +216,38 @@ function getDataPointValues(contextObj, docObj, argsPathListMap) {
       //are we dealing with another JSONPath format?
       //TODO: Possibly add another property to confirm it is a JPath
       let isDefaultValueJpath =
-        defaultValue !== undefined &&
-        !Array.isArray(defaultValue) &&
-        //cds Hooks informational context
+        defaultValue && //defVal exists
+        !Array.isArray(defaultValue) && //and is not an array
+        //cds Hooks informational contexts
         (("" + defaultValue).startsWith("context") ||
-          ("" + defaultValue).startsWith("prefetch"));
+          ("" + defaultValue).startsWith("prefetch") ||
+          ("" + defaultValue).startsWith("$"));
 
       //if default is a path, apply Jsonpath otherwise return the value
       valueFromContext = isDefaultValueJpath
         ? getDataFromContext(defaultValue, contextObj)
         : defaultValue;
-    } //endOf default vlaue undefined
+    } //endOf default value undefined
 
     //if this parameter is still undefined :
     if (valueFromContext === undefined) {
       //but optional:
       if (isDataOptional) {
-        //return undefined to hold the position in the array of arguments
-        argsPathListMap.set(eformLabel, undefined);
+        //return undefined as value of this label, to hold the position in the array of arguments
+        argsPathListMap.set(aPath_label, undefined);
         //then continue to next iteration
         continue;
       } else {
         //if mandatory, end process and send error
         throw new ErrorHandler(
           500,
-          `MongoDB: In parameter ${docObj[paramName]}, data Object ${eformLabel} is required yet its value could not be extracted from the request neither a default value is specified in the template.`
+          `MongoDB: In parameter ${docObj[paramName]}, data Object ${aPath_label} is required yet its value could not be extracted from the request neither a default value is specified in the template.`
         );
       }
     }
 
     logger.info(
-      `dataPath ${eformLabel} returned value ${JSON.stringify(
+      `dataPath ${aPath_label} returned value ${JSON.stringify(
         valueFromContext
       )}`
     );
@@ -253,10 +255,10 @@ function getDataPointValues(contextObj, docObj, argsPathListMap) {
     /// DATA HAS ALREADY BEEN EXTRACTED ///
 
     //typing the extracted data
-    valueFromContext = typePathVal(dataType, valueFromContext);
+    valueFromContext = typePathVal(aPath_datatype, valueFromContext);
 
-    //add value to list after potentially applying a function on it.
-    argsPathListMap.set(eformLabel, valueFromContext);
+    //add value to instance of Map associating labels (from dataPath list) to extracted values
+    argsPathListMap.set(aPath_label, valueFromContext);
   }
 }
 
@@ -312,7 +314,7 @@ function typePathVal(typepath, value) {
     //if type of value is not String, then change type as specified
     switch (typepath) {
       case "date":
-        resultArr[iters - 1] = new Date(tempVal);
+        resultArr[iters - 1] = new Date(tempVal); //TODO: check this typing is generic enough
         break;
       case "number":
         resultArr[iters - 1] = Number(tempVal);
@@ -440,7 +442,7 @@ async function applyActions(
   funListAction,
   dataPathsValMap
 ) {
-  //if empty, there are no actions to be applied at this moment
+  //if empty, there are no actions on queried data to be applied at this moment
   if (funListAction == []) return;
 
   //apply mid-process action to values in list of arguments
@@ -454,7 +456,7 @@ async function applyActions(
     ) {
       //if it is labelled as function, take the function symbol as operator otherwise use the action name
       operatorName =
-        actionObject[action] === functLabel
+        (actionObject[action] === functLabel)
           ? actionObject[details][symbol]
           : actionObject[action];
     } else {
@@ -466,7 +468,7 @@ async function applyActions(
 
     //parameter names used as arguments. We expect at most 2 arguments
     let firstArgLbl;
-    let secondArgLbl;
+    let secondArgLbl = undefined;
 
     //test for consistent structure
     if (
@@ -477,16 +479,16 @@ async function applyActions(
       firstArgLbl = actionObject[details][arg1];
 
       //test for a second argument
-      if (actionObject[details].hasOwnProperty(arg2))
-        secondArgLbl = actionObject[details][arg2];
+      if (actionObject[details].hasOwnProperty(arg2)) secondArgLbl = actionObject[details][arg2];
+
     } else {
       throw new ErrorHandler(
         500,
-        `field ${details} or ${arg1} is not found in e-form`
+        `field ${details} or ${arg1} is not found in the actions array of the MongoDb document.`
       );
     }
 
-    //this var will contain the resulting value to replace the initial arguments
+    //this var will contain the resulting value, after function application, to replace the initial arguments
     let newVal;
 
     ///begin with comparison between arguments. resulting boolean value is stored in first given argument, ie., lhs arg
@@ -511,6 +513,12 @@ async function applyActions(
           );
         }
 
+        //check there is arg2 containing the field name that holds the concept values
+        if(!secondArgLbl) throw new ErrorHandler(
+          500,
+          `arg2 value in subClassOf function from action array of MongoDB doc is not found.`
+        );
+
         //obtain all concept Ids using arg2 and output
         //path to values using index
         let jsonPathArg2 = `$.queryArgs.${secondArgLbl}`;
@@ -521,7 +529,9 @@ async function applyActions(
         //apply operation for each extracted concept and list of concepts extracted
         //from hook context
         //if succeeds, add concept Id to a list
-        //when done, conceptIdList is the value to add to arg1 val
+        //when done, conceptIdList is the value to add to the value associated with arg1
+          //TODO: how to optimize this operation when repeated operations for the same concepts are applied? (Elasticsearch?)
+
         //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
         let args1Values = dataPathsValMap.get(firstArgLbl);

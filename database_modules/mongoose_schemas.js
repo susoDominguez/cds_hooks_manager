@@ -1,21 +1,20 @@
-const mongoose = require("mongoose");
-const { isAncestor_eq } = require("./constants")
+import * as mongoose from "mongoose";
+import isAncestor_eq from "./constants.js";
 //Define a schema
 const Schema = mongoose.Schema;
 
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
 const paramSchema = new Schema({
   parameter: { type: String, required: true, maxlength: 100 },
-  description: { type: String, required: true, default: "none"},
+  description: { type: String, required: true, default: "none" },
   cigInvolved: { type: [String], required: false, default: [], maxlength: 100 },
   //list of objects specifying where to find the data, their type and default values (possibly another Jsonpath) if data not found
-  pathList: {
+  dataPaths: {
     type: [
       {
         label: { type: String, required: true },
-        description: { type: String, required: false, default: "none"},
-        parameter: { type: String, required: true },
-        Jpath: { type: String, required: true, default: ""},
+        description: { type: String, required: false },
+        Jpath: { type: String, required: true },
         typeOf: {
           type: String,
           required: true,
@@ -25,20 +24,32 @@ const paramSchema = new Schema({
         defaultVal: {
           type: Schema.Types.Mixed,
           required: false,
-          default: "-1",
+          default: undefined,
         },
         required: { type: Boolean, required: true, default: true },
       },
     ],
+    _id: false,
     required: true,
     default: [],
   },
-  actionList: {
+  actions: {
     type: [
       {
         action: {
           type: String,
-          enum: ["inLHS", "subsetOf", "subSetOfLHS", "function", "comparison", "in", "findRef", "subClassOf"],
+          enum: [
+            "inLHS",
+            "in",
+            "function",
+            "comparison",
+            "Qomparison",
+            "findRef",
+            "subSetOf",
+            "subSetOfLHS",
+            "subClassOf",
+          ],
+          _id:false,
           default: "in",
           required: true,
         },
@@ -60,8 +71,8 @@ const paramSchema = new Schema({
             //ALL cases
             pathList_label: {
               type: {
-                lhs: { type: String, required: true, default: ""},
-                rhs: { type: String, required: false, default: ""}
+                lhs: { type: String, required: true, default: "" },
+                rhs: { type: String, required: false, default: "" }
               },
               required: false
             },
@@ -97,6 +108,10 @@ const paramSchema = new Schema({
     default: [],
   },
 });
+
+
+
+
 
 const paramSchema_old = new Schema({
   parameter: { type: String, required: true, maxlength: 100 },
@@ -214,7 +229,7 @@ const cdsServiceSchema = new Schema({
   services: {
     type: [
       {
-        hook: { type: String, required: true, default: "careplan-review"  },
+        hook: { type: String, required: true, default: "careplan-review" },
         title: { type: String, required: true },
         description: { type: String, required: true },
         id: { type: String, required: true, default: "careplan-review" },
@@ -224,4 +239,4 @@ const cdsServiceSchema = new Schema({
   },
 });
 
-module.exports = { paramSchema, templateSchema, cdsServiceSchema };
+export { paramSchema, templateSchema, cdsServiceSchema };

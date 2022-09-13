@@ -33,7 +33,8 @@ export default {
     let hookId = req.params.hook;
     logger.info("hookId is " + hookId);
 
-    //CIG Model id extracted from route. If non-existent, use general DB for non-CIG-related hooks
+    //CIG Model id extracted from route. 
+    //If non-existent, use general DB for non-CIG-related hooks
     let cigModel = req.params.cigId || null;
     logger.info("CIG Model is " + cigModel);
 
@@ -76,12 +77,13 @@ export default {
       //create object with arguments and their applicable actions. It also contains output as taken from eform
       let actionsObj = addFunctionsFromTemplateToArgsObject(eform);
 
-      //transform PathList from e-form in fetch document into a map where the key is the eform parameter label
+      //transform dataPaths from e-form in fetch document into a map where the key is the eform parameter label
 
-      //fetch specific data from hook context using e-forms, then add to MAP argsPathListMap in actionsObj
-      getDataPointValues(body, eform, actionsObj["argsPathListMap"]);
+      //fetch specific data from hook context using mongodb e-forms, then add to MAP argsPathListMap in actionsObj
+      const argsPathListMap = "argsPathListMap";
+      getDataPointValues(body, eform, actionsObj[argsPathListMap]);
 
-      //apply first user-defined functions, comparisons between arguments and ancestors check,
+      //apply first: user-defined functions, then comparisons between arguments and subClassOf checks,
       // to RHS argument array in the object (no return value req as it is pass-by-ref)
       await applyActions(
         body,
