@@ -14,6 +14,9 @@ import {
   cigInvolved,
   datalist,
   ciglist,
+  pathList,
+  aDataPathLbl,
+  noCIG
 } from "../database_modules/constants.js";
 
 export default {
@@ -35,7 +38,7 @@ export default {
 
     //CIG Model id extracted from route. 
     //If non-existent, use general DB for non-CIG-related hooks
-    let cigModel = req.params.cigId || null;
+    let cigModel = req.params.cigId ?? noCIG;
     logger.info("CIG Model is " + cigModel);
 
     //hook context
@@ -55,7 +58,7 @@ export default {
       );
 
     //Map of e-form parameters to be added to request call:
-    // key => eform.param.label, value => { cigInvolved: [String], valueList: [object]}
+    // key => eform.param.label, value => { cigInvolved: [String], data: [object] }
     let paramMap = new Map();
 
     //triggered CIG identifiers
@@ -64,24 +67,37 @@ export default {
     //retrieve all data for querying//
 
     //get cursor Promise to all parameters from this request
-    for await (const eform of Model.find().lean()) {
+    for await (const aMongoDbDoc of Model.find().lean()) {
       //key of Map
-      let eformName = eform.hasOwnProperty(paramName) ? eform[paramName] : undefined;
+      let mongoDbDoc_Label = aMongoDbDoc.hasOwnProperty(paramName) ? aMongoDbDoc[paramName] : undefined;
       //if label of eform missing, throw error
-      if (eformName === undefined)
+      if (mongoDbDoc_Label === undefined)
         throw new ErrorHandler(
           500,
-          `a parameter label is missing on eform`
+          `a parameter label is missing on the mongoDB document.`
         );
 
+        //is the list of involved CIgs empty?
+        let MongoDbDoc_CigListIsEmpty = 
+        aMongoDbDoc.hasOwnProperty(cigInvolved) ? 
+          (Array.isArray(aMongoDbDoc[cigInvolved])? aMongoDbDoc[cigInvolved].length===0 : false) :
+           false;
+
+        //which dataPAth is first? this matters becuase when the value returned does not come from the outcome list
+        //then it comes from the resulting value of the first dataPath
+        let mainDataPath_label = 
+          aMongoDbDoc.hasOwnProperty(pathList) && aMongoDbDoc[pathList][0].hasOwnProperty(aDataPathLbl) ? 
+          aMongoDbDoc[pathList][0][aDataPathLbl] :
+          false;
+
       //create object with arguments and their applicable actions. It also contains output as taken from eform
-      let actionsObj = addFunctionsFromTemplateToArgsObject(eform);
+      let actionsObj = addFunctionsFromTemplateToArgsObject(aMongoDbDoc);
 
       //transform dataPaths from e-form in fetch document into a map where the key is the eform parameter label
 
-      //fetch specific data from hook context using mongodb e-forms, then add to MAP argsPathListMap in actionsObj
-      const argsPathListMap = "argsPathListMap";
-      getDataPointValues(body, eform, actionsObj[argsPathListMap]);
+      //fetch specific data from hook context using mongodb e-forms, then add to MAP dataPathMap in actionsObj
+      const dataPathMap = "dataPathMap";
+      getDataPointValues(body, aMongoDbDoc, actionsObj[dataPathMap]);
 
       //apply first: user-defined functions, then comparisons between arguments and subClassOf checks,
       // to RHS argument array in the object (no return value req as it is pass-by-ref)
@@ -89,14 +105,16 @@ export default {
         body,
         actionsObj["argsOutcomeList"],
         actionsObj["funListAction"],
-        actionsObj["argsPathListMap"]
+        actionsObj[dataPathMap]
       );
 
-      //produce result value
-      let resultArr = await getOutcomeList(Model, eformName, actionsObj);
+      //produce list of results for each dataPath object:
+      //if the list of involved CIGs is empty or we are using the non-cig Model,
+      //return a mapping, otherwise return the selected Output
+      let resultArr = await getOutcomeList(Model, mongoDbDoc_Label, actionsObj, MongoDbDoc_CigListIsEmpty, mainDataPath_label);
 
       logger.info(
-        `value to be added to Map for eform ${eformName} is: ${JSON.stringify(
+        `value to be added to Map for eform ${mongoDbDoc_Label} is: ${JSON.stringify(
           resultArr
         )}`
       );
@@ -107,7 +125,7 @@ export default {
       let finalValObj = null;
 
        switch (cigModel) {
-        case "non-cig":
+        case noCIG:
           finalValObj = resultArr;
           break;
         default:
@@ -117,33 +135,35 @@ export default {
           finalValObj[datalist] = resultArr;
           //add a property in value object of MAP for parameter,
           // to represent the CIG(s) the value data (possibly sub-CIG ids) belongs to
-          let cigList = eform.hasOwnProperty(cigInvolved)
-            ? eform[cigInvolved]
+          let cigs = aMongoDbDoc.hasOwnProperty(cigInvolved)
+            ? aMongoDbDoc[cigInvolved]
             : new Array();
           //check is array as expected
-          if (!Array.isArray(cigList))
+          if (!Array.isArray(cigs))
             throw new ErrorHandler(
               500,
               "parameter " + cigInvolved + " is not an Array as expected."
             );
-          //add new CIG to array of CIGs avoiding repetition
-          for (const cig of cigList) {
+          //add new CIG to the array of the collection of CIGs from all Mongodb documents, avoiding repetition
+          for (const cig of cigs) {
             if (!requiredCIGs.includes(cig)) requiredCIGs.push(cig);
           }
           //add list of identified CIGs to result object
-          finalValObj[ciglist] = cigList;
+          finalValObj[ciglist] = cigs;
           break;
       } 
 
       //add result to Map with key the eform label
-      paramMap.set(eformName, finalValObj);
+      paramMap.set(mongoDbDoc_Label, finalValObj);
       logger.info(
-        `eform with label ${eformName} has data: ${JSON.stringify(paramMap.get(eformName))}`
+        `eform with label ${mongoDbDoc_Label} has data: ${JSON.stringify(paramMap.get(mongoDbDoc_Label))}`
       );
     }//endOf for await loop
 
-    //add list of CIGs to Map
-    paramMap.set("cigsList", requiredCIGs);
+    //add list of CIGs to Map if this model is for cigs
+    if(cigModel !== noCIG) {
+      paramMap.set("cigsList", requiredCIGs);
+    }
     //Parameters to transfer to next middleware
     res.locals.hookData = paramMap;
 

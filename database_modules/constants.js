@@ -1,4 +1,5 @@
 const Qomparison= "Qomparison",
+    aDataPathLbl = "label",
     paramName= "parameter",
     isMandatory= "required",
     cigInvolved= "cigInvolved",
@@ -41,9 +42,11 @@ const Qomparison= "Qomparison",
     datalist= 'data',
     ciglist= 'cigList',
     isAncestor_eq= "subClassOf",
-    codeSyst= "codeSystemId";
+    codeSyst= "codeSystemId",
+    noCIG="non-cig";
     export  {
         Qomparison,
+        noCIG,
         paramName,
         isMandatory,
         cigInvolved,
@@ -86,5 +89,6 @@ const Qomparison= "Qomparison",
         datalist,
         ciglist,
         isAncestor_eq,
-        codeSyst
+        codeSyst,
+        aDataPathLbl
     };
