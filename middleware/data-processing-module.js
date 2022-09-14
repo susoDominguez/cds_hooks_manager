@@ -342,6 +342,7 @@ async function getAncestors(schemeId, concept) {
   //find URL from schemeId
   let postUrl = "";
   let preUrl = "https://";
+  //path to retrieve all expected concepts
   let jsonPath = "";
 
   switch (schemeId) {
@@ -355,7 +356,9 @@ async function getAncestors(schemeId, concept) {
       break;
   }
   try {
+    //get response from snomed ct server
     let res = await got(preUrl + postUrl, { json: true });
+    //return list of ancestor of this concept
     return getDataFromContext(jsonPath, res.body);
   } catch (err) {
     throw new ErrorHandler(500, err);
@@ -467,8 +470,8 @@ async function applyActions(
     }
 
     //parameter names used as arguments. We expect at most 2 arguments
-    let firstArgLbl;
-    let secondArgLbl = undefined;
+    let arg_1;
+    let arg_2 = undefined;
 
     //test for consistent structure
     if (
@@ -476,10 +479,10 @@ async function applyActions(
       actionObject[details].hasOwnProperty(arg1)
     ) {
       //name of first argument
-      firstArgLbl = actionObject[details][arg1];
+      arg_1 = actionObject[details][arg1];
 
       //test for a second argument
-      if (actionObject[details].hasOwnProperty(arg2)) secondArgLbl = actionObject[details][arg2];
+      if (actionObject[details].hasOwnProperty(arg2)) arg_2 = actionObject[details][arg2];
 
     } else {
       throw new ErrorHandler(
@@ -503,7 +506,7 @@ async function applyActions(
         if (
           //test there is a field for code system and that we have a second parameter
           actionObject[details].hasOwnProperty(codeSyst) &&
-          secondArgLbl
+          arg_2
         ) {
           codeSystId = actionObject[details][codeSyst];
         } else {
@@ -514,35 +517,36 @@ async function applyActions(
         }
 
         //check there is arg2 containing the field name that holds the concept values
-        if(!secondArgLbl) throw new ErrorHandler(
+        if(!arg_2) throw new ErrorHandler(
           500,
           `arg2 value in subClassOf function from action array of MongoDB doc is not found.`
         );
 
         //obtain all concept Ids using arg2 and output
         //path to values using index
-        let jsonPathArg2 = `$.queryArgs.${secondArgLbl}`;
+        let jsonPathArg2 = `$.queryArgs.${arg_2}`;
         //find values.
         //Returns an array.
-        let args2Values = getDataFromContext(jsonPathArg2, outputObj);
+        let queryArgs_arg2_Vals = getDataFromContext(jsonPathArg2, outputObj);
 
         //apply operation for each extracted concept and list of concepts extracted
         //from hook context
         //if succeeds, add concept Id to a list
         //when done, conceptIdList is the value to add to the value associated with arg1
-          //TODO: how to optimize this operation when repeated operations for the same concepts are applied? (Elasticsearch?)
+        //TODO: how to optimize this operation when repeated operations for the same concepts are applied? (Elasticsearch?)
 
         //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
-        let args1Values = dataPathsValMap.get(firstArgLbl);
+        let arg1Val = dataPathsValMap.get(arg_1);
 
         //isAncestor_eq expects a list of conceptIds to check
         //link lists or add item to list
         let conceptIdList = new Array();
-        if (Array.isArray(args1Values)) {
-          conceptIdList = args1Values;
+
+        if (Array.isArray(arg1Val)) {
+          conceptIdList = arg1Val;
         } else {
-          conceptIdList.push(args1Values);
+          conceptIdList.push(arg1Val);
         }
 
         //retrieve a list of all ancestors for all concepts
@@ -552,27 +556,30 @@ async function applyActions(
             return getAncestors(codeSystId, conceptId);
           })
         );
-        //add the concepts also
+        //add the concepts also since is not a strict subclass
         allAncestors.push(conceptIdList);
-        //flatten
+        //flatten both lists
         allAncestors = flat(allAncestors, 1);
-
+        //response variable
         newVal = new Array();
 
         logger.info(`allAncestors is ${JSON.stringify(allAncestors)}`);
 
-        for (let index = 0; index < args2Values.length; index++) {
-          let conceptId = args2Values[index];
+        for (let index = 0; index < queryArgs_arg2_Vals.length; index++) {
+          let conceptId = queryArgs_arg2_Vals[index];
           logger.info(`parent conceptId is ${conceptId}`);
-          logger.info(`is ancestor ${allAncestors.includes(conceptId)}`);
+          logger.info(`is ${conceptId} ancestor? ${allAncestors.includes(conceptId)}`);
+          //if a concept from the allAncestors list includes this concept
+          //then this concept is an ancestor or eq to the concepts fetched from the hook context
+          //hence add to the value to be associated with this parameter
           if (allAncestors.includes(conceptId)) newVal.push(conceptId);
         }
 
         logger.info(
           `isSubClass: arg1 has values ${JSON.stringify(
-            args1Values
+            arg1Val
           )}. arg2 has values ${JSON.stringify(
-            args2Values
+            queryArgs_arg2_Vals
           )}. Matched ancestors are ${JSON.stringify(newVal)}`
         );
 
@@ -583,19 +590,19 @@ async function applyActions(
         //find Resources in context from a list of given references
         newVal = findReferencesInContext(
           hookCntxtObj,
-          dataPathsValMap.get(firstArgLbl),
+          dataPathsValMap.get(arg_1),
           actionObject
         );
         logger.info(
-          `FindRef: ${firstArgLbl} has selection ${dataPathsValMap.get(
-            firstArgLbl
+          `FindRef: ${arg_1} has selection ${dataPathsValMap.get(
+            arg_1
           )}. Referenced values are ${newVal}`
         );
         break;
       /////////////
       case comparison:
         //only if 2 args are given
-        if (!secondArgLbl)
+        if (!arg_2)
           throw new ErrorHandler(
             500,
             `second argument is missing when comparing objects`
@@ -606,8 +613,8 @@ async function applyActions(
 
         //find whether argument is a key or a value to be applied directly
         //if key, get value from Map
-        let lhsArg = fetchArgumentVal(dataPathsValMap, firstArgLbl);
-        let rhsArg = fetchArgumentVal(dataPathsValMap, secondArgLbl);
+        let lhsArg = fetchArgumentVal(dataPathsValMap, arg_1);
+        let rhsArg = fetchArgumentVal(dataPathsValMap, arg_2);
 
         //To compare 2 values taken from the pathList,
         //we expect at most one singleton array or a primitive value; otherwise it is an error
@@ -662,7 +669,7 @@ async function applyActions(
           // newVal = (Array.isArray(lhsArg)) ?
         }
         logger.info(
-          `Comparison: ${firstArgLbl} value is ${lhsArg}. ${secondArgLbl} value is ${rhsArg}. symbol is ${comparisonSymbol}. Comparison result is ${newVal}.`
+          `Comparison: ${arg_1} value is ${lhsArg}. ${arg_2} value is ${rhsArg}. symbol is ${comparisonSymbol}. Comparison result is ${newVal}.`
         );
         break;
       ////////////////
@@ -672,12 +679,12 @@ async function applyActions(
         switch (operatorName) {
           case "getYearsFromNow":
             //this case has only one arg so index value has to be at index 0
-            newVal = getYearsFromNow(dataPathsValMap.get(firstArgLbl));
+            newVal = getYearsFromNow(dataPathsValMap.get(arg_1));
             break;
 
           case "calculate_age":
             //this case has only one arg so index value has to be at index 0
-            newVal = calculate_age(dataPathsValMap.get(firstArgLbl));
+            newVal = calculate_age(dataPathsValMap.get(arg_1));
             break;
 
           case "arr_diff_nonSymm":
@@ -685,16 +692,16 @@ async function applyActions(
             let arr1 = new Array();
             let arr2 = new Array();
 
-            if (!Array.isArray(dataPathsValMap.get(firstArgLbl))) {
-              arr1.push(dataPathsValMap.get(firstArgLbl));
+            if (!Array.isArray(dataPathsValMap.get(arg_1))) {
+              arr1.push(dataPathsValMap.get(arg_1));
             } else {
-              arr1 = dataPathsValMap.get(firstArgLbl);
+              arr1 = dataPathsValMap.get(arg_1);
             }
 
-            if (!Array.isArray(dataPathsValMap.get(secondArgLbl))) {
-              arr2.push(dataPathsValMap.get(secondArgLbl));
+            if (!Array.isArray(dataPathsValMap.get(arg_2))) {
+              arr2.push(dataPathsValMap.get(arg_2));
             } else {
-              arr2 = dataPathsValMap.get(secondArgLbl);
+              arr2 = dataPathsValMap.get(arg_2);
             }
 
             newVal = arr_diff_nonSymm(arr1, arr2);
@@ -705,7 +712,7 @@ async function applyActions(
     } //endOf main Switch
 
     //replace argument with resulting value
-    dataPathsValMap.set(firstArgLbl, newVal);
+    dataPathsValMap.set(arg_1, newVal);
   } //endOfLoop
 
   //arguments are arrays so pass-by-ref, hence no need to return changes
