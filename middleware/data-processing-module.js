@@ -87,6 +87,48 @@ async function callCdsServicesManager(hookId, cigId, reqData) {
     );
   }
 }
+/**
+ * returns the type of the value. 
+ * It mimics behaviiour of typeOf but for non-primitives it returns a more granular typename where possible
+ * @param {*} value the value to be type-checked
+ * @returns 
+ */
+function _typeOf(value) {
+  if (value === null) {
+    return "null";
+  }
+  const baseType = typeof value;
+  // Primitive types
+  if (!["object", "function"].includes(baseType)) {
+    return baseType;
+  }
+
+  // Symbol.toStringTag often specifies the "display name" of the
+  // object's class. It's used in Object.prototype.toString().
+  const tag = value[Symbol.toStringTag];
+  if (typeof tag === "string") {
+    return tag;
+  }
+
+  // If it's a function whose source code starts with the "class" keyword
+  if (
+    baseType === "function" &&
+    Function.prototype.toString.call(value).startsWith("class")
+  ) {
+    return "class";
+  }
+
+  // The name of the constructor; for example `Array`, `GeneratorFunction`,
+  // `Number`, `String`, `Boolean` or `MyCustomClass`
+  const className = value.constructor.name;
+  if (typeof className === "string" && className !== "") {
+    return className;
+  }
+
+  // At this point there's no robust way to get the type of value,
+  // so we use the base implementation.
+  return baseType;
+}
 
 /**
  * creates an object containing values and actions to be applied to values
@@ -125,9 +167,9 @@ function addFunctionsFromTemplateToArgsObject(eform) {
         //obj[action] !== isAncestor_eq &&
         obj[action] !== comparison
     ),
-    //Map of arguments where the key is the parameter label and the value is the dataPath object.
+    //Map of arguments where the key is the parameter label and the value is the dataDataPathObject object.
     //To be extracted from clinical context as part of request
-    argsPathListMap: new Map(),
+    dataDataPathObjectMap: new Map(),
     //Output list, potentially a list of constraint satisfaction objects to be compared with arguments for selecting zero or more outcomes if triggered.
     argsOutcomeList: eform[outcomeList],
   };
@@ -149,65 +191,65 @@ function addFunctionsFromTemplateToArgsObject(eform) {
  * Fetches parameter value from hook context using information on MongoDB doc. Then, adds parameter and associated value to an instance of Map
  * @param {object} contextObj context as taken from request
  * @param {object} docObj e-form object
- * @param {Map} argsPathListMap Map from eform objects to returned values
+ * @param {Map} dataPathMap Map from eform objects to returned values
  */
-function getDataPointValues(contextObj, docObj, argsPathListMap) {
+function getDataPointValues(contextObj, docObj, dataPathMap) {
   //Fetch parameters, type properly and add to MAP.
   //Then apply to already existing MAP object the actions for comparisons to find results
   //or the existing result if not comparison is needed
 
   //Array containing list of objects with data points to be extracted:
-  const pathListObj = docObj[pathList];
+  const dataDataPathObjectObjectsList = docObj[pathList];
 
   //recognise as array
-  if (!Array.isArray(pathListObj))
+  if (!Array.isArray(dataDataPathObjectObjectsList))
     throw new ErrorHandler(500, "field paths expected to be an array.");
 
   //for each path in pathList.
   //If path is empty list, deal with it later
-  for (const aPath of pathListObj) {
+  for (const aDataPathObject of dataDataPathObjectObjectsList) {
     //check it has all the expected properties
     if (
       !(
-        aPath.hasOwnProperty(typePath) ||
-        aPath.hasOwnProperty(isMandatory) ||
-        aPath.hasOwnProperty(xpath) ||
-        aPath.hasOwnProperty(labelTemplate)
+        aDataPathObject.hasOwnProperty(typePath) ||
+        aDataPathObject.hasOwnProperty(isMandatory) ||
+        aDataPathObject.hasOwnProperty(xpath) ||
+        aDataPathObject.hasOwnProperty(labelTemplate)
       )
     )
       throw new ErrorHandler(
         500,
         `MongoDB: Parameter ${docObj[paramName]
-        } is missing a required attribute in Property ${pathList}. ${aPath.hasOwnProperty(labelTemplate)
-          ? " Label value is " + aPath[labelTemplate]
+        } is missing a required attribute in Property ${pathList}. ${aDataPathObject.hasOwnProperty(labelTemplate)
+          ? " Label value is " + aDataPathObject[labelTemplate]
           : ""
         }`
       );
 
-    //default value property on aPath is not mandatory
+    //default value property on aDataPathObject is not mandatory
     //if it doesnt exists, add an undefined value
-    if(!aPath.hasOwnProperty(defaultVal)){
-      aPath[defaultVal] = undefined;
+    if (!aDataPathObject.hasOwnProperty(defaultVal)) {
+      aDataPathObject[defaultVal] = undefined;
     }
-    //label of dataPath obj in MongoDb doc
-    let aPath_label = aPath[labelTemplate];
+    //label of dataDataPathObject obj in MongoDb doc
+    let aDataPathObject_label = aDataPathObject[labelTemplate];
     //type of path
-    let aPath_datatype = aPath[typePath];
+    let aDataPathObject_datatype = aDataPathObject[typePath];
     //is this data optional?
-    let isDataOptional = !aPath[isMandatory];
+    let isDataOptional = !aDataPathObject[isMandatory];
 
     //string with the Jpath to value and the default value
-    let jpathQueryExprs = aPath[xpath];
+    let jpathQueryExprs = aDataPathObject[xpath];
 
     //obtain value from request body. If not found, JSONATA returns undefined.
     //Also could be undefined on purpose to add user-defined values in default.
     let valueFromContext =
-      jpathQueryExprs ? getDataFromContext(jpathQueryExprs,contextObj) : undefined;
+      jpathQueryExprs ? getDataFromContext(jpathQueryExprs, contextObj) : undefined;
 
     //if undefined, get the default value which could also be undefined or a JSONpath of the same type as the main one
     if (valueFromContext === undefined) {
       //get default value (possibly undefined) 
-      let defaultValue = aPath[defaultVal];
+      let defaultValue = aDataPathObject[defaultVal];
       //and check whether it is also a path to data in a resource
       // is it an array? convert into a JSON array
       if (("" + defaultValue).trim().startsWith("["))
@@ -234,20 +276,20 @@ function getDataPointValues(contextObj, docObj, argsPathListMap) {
       //but optional:
       if (isDataOptional) {
         //return undefined as value of this label, to hold the position in the array of arguments
-        argsPathListMap.set(aPath_label, undefined);
+        dataPathMap.set(aDataPathObject_label, undefined);
         //then continue to next iteration
         continue;
       } else {
         //if mandatory, end process and send error
         throw new ErrorHandler(
           500,
-          `MongoDB: In parameter ${docObj[paramName]}, data Object ${aPath_label} is required yet its value could not be extracted from the request neither a default value is specified in the template.`
+          `MongoDB: In parameter ${docObj[paramName]}, data Object ${aDataPathObject_label} is required yet its value could not be extracted from the request neither a default value is specified in the template.`
         );
       }
     }
 
     logger.info(
-      `dataPath ${aPath_label} returned value ${JSON.stringify(
+      `dataDataPathObject ${aDataPathObject_label} returned value ${JSON.stringify(
         valueFromContext
       )}`
     );
@@ -255,10 +297,10 @@ function getDataPointValues(contextObj, docObj, argsPathListMap) {
     /// DATA HAS ALREADY BEEN EXTRACTED ///
 
     //typing the extracted data
-    valueFromContext = typePathVal(aPath_datatype, valueFromContext);
+    valueFromContext = typePathVal(aDataPathObject_datatype, valueFromContext);
 
-    //add value to instance of Map associating labels (from dataPath list) to extracted values
-    argsPathListMap.set(aPath_label, valueFromContext);
+    //add value to instance of Map associating labels (from dataDataPathObject list) to extracted values
+    dataPathMap.set(aDataPathObject_label, valueFromContext);
   }
 }
 
@@ -368,7 +410,7 @@ async function getAncestors(schemeId, concept) {
 /**
  *
  * @param {object} hookContext hook Context
- * @param {Map} refsList list of references
+ * @param {Array} refsList list of references of form ResourceType/id
  * @param {object} actObj object findRef action definition from eform in Fetch Doc
  * @returns array
  */
@@ -389,6 +431,7 @@ function findReferencesInContext(hookContext, refsList, actObj) {
 
   //JSONpath is expected to be written with 2 placeholders: var1 and var2
   let xPathStr = actObj[details][xpath];
+  //data typing of results
   let typing = actObj[details][typePath];
 
   //list of results that will replace the list of arguments at the given index of the general argsList array
@@ -397,7 +440,7 @@ function findReferencesInContext(hookContext, refsList, actObj) {
   //for each reference
   for (const refString of refsList) {
     //replace var1 and var2 by refString parts
-    let refWords = refString.split("/");
+    let refWords = refString.split("/"); //so Patient/example -> [Patient, example]
 
     //find value in Path.
     //replace placeholders by FHIR ResourceType and FHIR Id
@@ -407,15 +450,18 @@ function findReferencesInContext(hookContext, refsList, actObj) {
     logger.info(`path string is ${pathStr}`);
     let res = getDataFromContext(pathStr, hookContext);
 
+    //TODO: is it too tight to throw an error if reference is not found on hook context
     if (!res)
       throw new ErrorHandler(
         500,
         `Function reference finder has not been able to find the reference in the context using the specified data from MOngoDB`
       );
+
     //add to temp list
     tempList.push(res);
-  }
-  //flatten list with referenced values
+  } //endOf loop
+
+  //flatten list with found referenced values
   tempList = flat(tempList, 1);
 
   //typing of values
@@ -425,11 +471,11 @@ function findReferencesInContext(hookContext, refsList, actObj) {
 
 /**
  * Using a given object, fetch value in MAp using object as key, else object is value itself
- * @param {Map} dataPathMap Map structure containing dataPaths values referenced by their label
+ * @param {Map} dataDataPathObjectMap Map structure containing dataDataPathObjects values referenced by their label
  * @param {object} param Object that can be a key to obtain value or value directly
  */
-function fetchArgumentVal(dataPathMap, param) {
-  return dataPathMap.has(param) ? dataPathMap.get(param) : param;
+function fetchArgumentVal(dataDataPathObjectMap, param) {
+  return dataDataPathObjectMap.has(param) ? dataDataPathObjectMap.get(param) : param;
 }
 
 /*** Applies user defined functions or actions between data extracted from hook context or subClassOf operator.
@@ -437,13 +483,13 @@ function fetchArgumentVal(dataPathMap, param) {
  * @param {object} hookCntxtObj hook context with resources. To be used on a reference find
  * @param {object} outputObj output list. To be applied to isAncestor_eq
  * @param {array} funListAction array with functions
- * @param {Map} dataPathsValMap map with data extracted from hook context referenced by dataPaths' parameter field
+ * @param {Map} dataDataPathObjectsValMap map with data extracted from hook context referenced by dataDataPathObjects' parameter field
  */
 async function applyActions(
   hookCntxtObj,
   outputObj,
   funListAction,
-  dataPathsValMap
+  dataDataPathObjectsValMap
 ) {
   //if empty, there are no actions on queried data to be applied at this moment
   if (funListAction == []) return;
@@ -517,7 +563,7 @@ async function applyActions(
         }
 
         //check there is arg2 containing the field name that holds the concept values
-        if(!arg_2) throw new ErrorHandler(
+        if (!arg_2) throw new ErrorHandler(
           500,
           `arg2 value in subClassOf function from action array of MongoDB doc is not found.`
         );
@@ -537,7 +583,7 @@ async function applyActions(
 
         //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
-        let arg1Val = dataPathsValMap.get(arg_1);
+        let arg1Val = dataDataPathObjectsValMap.get(arg_1);
 
         //isAncestor_eq expects a list of conceptIds to check
         //link lists or add item to list
@@ -583,18 +629,19 @@ async function applyActions(
           )}. Matched ancestors are ${JSON.stringify(newVal)}`
         );
 
-        //TODO: when evaluating, check whether any ancestorConceptid is in the list of arguments
+        //when  evaluating for constraint satisfaction, check whether any ancestorConceptid is in the list of arguments.
+        //that's the result
         break;
       //////////////////
       case findRef:
         //find Resources in context from a list of given references
         newVal = findReferencesInContext(
           hookCntxtObj,
-          dataPathsValMap.get(arg_1),
+          dataDataPathObjectsValMap.get(arg_1),
           actionObject
         );
         logger.info(
-          `FindRef: ${arg_1} has selection ${dataPathsValMap.get(
+          `FindRef: ${arg_1} has selection ${dataDataPathObjectsValMap.get(
             arg_1
           )}. Referenced values are ${newVal}`
         );
@@ -605,7 +652,7 @@ async function applyActions(
         if (!arg_2)
           throw new ErrorHandler(
             500,
-            `second argument is missing when comparing objects`
+            `action Comparison not applied: second argument (arg2), either a dataDataPathObject label or a value, is missing.`
           );
 
         //comparison sign
@@ -613,8 +660,9 @@ async function applyActions(
 
         //find whether argument is a key or a value to be applied directly
         //if key, get value from Map
-        let lhsArg = fetchArgumentVal(dataPathsValMap, arg_1);
-        let rhsArg = fetchArgumentVal(dataPathsValMap, arg_2);
+        let lhsArg = fetchArgumentVal(dataDataPathObjectsValMap, arg_1);
+        let rhsArg = fetchArgumentVal(dataDataPathObjectsValMap, arg_2);
+
 
         //To compare 2 values taken from the pathList,
         //we expect at most one singleton array or a primitive value; otherwise it is an error
@@ -643,6 +691,18 @@ async function applyActions(
               )} on its LHS parameter (array). Check Request body or JSONpath`
             );
         }
+
+        //comparisons must be done between 2 objects of the same type
+        //
+        let typeOfLhsArg = _typeOf(lhsArg);
+        let typeOfRhsArg = _typeOf(rhsArg);
+        if (typeOfLhsArg !== typeOfRhsArg) {
+          throw new ErrorHandler(
+            500,
+            `Comparison not applicable: distinct data types are being compared ${lhsArg}:${typeOfLhsArg} and ${rhsArg}:${typeOfRhsArg}.`
+          );
+        }
+
         //compare with respect to symbol
         switch (comparisonSymbol) {
           case "eq":
@@ -679,12 +739,12 @@ async function applyActions(
         switch (operatorName) {
           case "getYearsFromNow":
             //this case has only one arg so index value has to be at index 0
-            newVal = getYearsFromNow(dataPathsValMap.get(arg_1));
+            newVal = getYearsFromNow(dataDataPathObjectsValMap.get(arg_1));
             break;
 
           case "calculate_age":
             //this case has only one arg so index value has to be at index 0
-            newVal = calculate_age(dataPathsValMap.get(arg_1));
+            newVal = calculate_age(dataDataPathObjectsValMap.get(arg_1));
             break;
 
           case "arr_diff_nonSymm":
@@ -692,16 +752,16 @@ async function applyActions(
             let arr1 = new Array();
             let arr2 = new Array();
 
-            if (!Array.isArray(dataPathsValMap.get(arg_1))) {
-              arr1.push(dataPathsValMap.get(arg_1));
+            if (!Array.isArray(dataDataPathObjectsValMap.get(arg_1))) {
+              arr1.push(dataDataPathObjectsValMap.get(arg_1));
             } else {
-              arr1 = dataPathsValMap.get(arg_1);
+              arr1 = dataDataPathObjectsValMap.get(arg_1);
             }
 
-            if (!Array.isArray(dataPathsValMap.get(arg_2))) {
-              arr2.push(dataPathsValMap.get(arg_2));
+            if (!Array.isArray(dataDataPathObjectsValMap.get(arg_2))) {
+              arr2.push(dataDataPathObjectsValMap.get(arg_2));
             } else {
-              arr2 = dataPathsValMap.get(arg_2);
+              arr2 = dataDataPathObjectsValMap.get(arg_2);
             }
 
             newVal = arr_diff_nonSymm(arr1, arr2);
@@ -712,7 +772,7 @@ async function applyActions(
     } //endOf main Switch
 
     //replace argument with resulting value
-    dataPathsValMap.set(arg_1, newVal);
+    dataDataPathObjectsValMap.set(arg_1, newVal);
   } //endOfLoop
 
   //arguments are arrays so pass-by-ref, hence no need to return changes
@@ -722,38 +782,71 @@ async function applyActions(
  * @param {Model} model model of db schema
  * @param {string} keyParam parameter label
  * @param {object} actionsObj object containing actions and arguments
+ * @param {boolean} isCigListEmpty is involved CIG list empty
+ * @param {string} mainDataPath_label label of first dataPaths object
  * @returns {Array} a (possibly flattened) array with results
  */
 async function getOutcomeList(
   model,
   keyParam,
   {
-    funListAction = [],
-    actions = [],
-    argsPathListMap = [],
+    funListAction = [], //actions to queried data plus subClassOf
+    actions = [], //constraint satisfaction actions, including subClassOf
+    dataDataPathObjectMap,
     argsOutcomeList = [],
-  }
+  },
+  isCigListEmpty,
+  mainDataPath_label
 ) {
+  logger.info(`dataDataPathObject parameter label applied to function getOutcomeList is ${keyParam}`);
+  Map.is
   //SPECIAL CASES
-  logger.info(`keyParam in getOutcomeList is ${keyParam}`);
 
-  //if argsoutcomeList is empty,
-  //then the purpose is to return the fetched (and possibly modified by user-defined functs)
-  //value(s) from the hook context.
-  if (argsOutcomeList.length === 0 || actions.length === 0) {
-    let resArr = new Array();
-    //remove any undefined value from the argsPathList array before returning
-    argsPathListMap.forEach((value, key, map) => {
-      if (value !== undefined) resArr.push(value);
-    });
-    // flatten array into a single array
-    return flat(resArr, 1);
+  //1.Case where no data required to be extracted but there is some constant value that must be added for this router, regardless.
+  //Then return outcome values from argsLhsList at index 0, as there is no reason to have more items in the array
+  //this case should not happen anymore!
+  if ((dataDataPathObjectMap instanceof Map) && dataDataPathObjectMap.size === 0) {
+    return (argsOutcomeList[0][outcome] ?? (new Array()));
   }
 
-  //Case where no data required to be extracted but there is some constant value that must be added for this router, regardless.
-  //Then return outcome values from argsLhsList at index 0, as there is no reason to have more items in the array
-  if (argsPathListMap.size === 0) {
-    return argsOutcomeList[0][outcome];
+  let outcomeIsEmpty = argsOutcomeList.length === 0;
+  if (!outcomeIsEmpty) {
+    let outcomeObj = argsOutcomeList[0];
+    outcomeIsEmpty = (!outcomeObj.hasOwnProperty(outcomeList) || (outcomeObj.hasOwnProperty(outcomeList) && Array.isArray(outcomeObj[outcomeList]) && outcomeObj[outcomeList].length === 0)) ? true : outcomeIsEmpty;
+  }
+
+  //2) If there are no actions left to be applied
+  if (actions.length === 0) {
+    //2.1)If CIG list is not empty then we expect some output, 
+    //although it makes no sense bc there is no association between the dataPaths and the given result
+    //but it is not an error
+    if (!isCigListEmpty && !outcomeIsEmpty) {
+      return argsOutcomeList[0][outcomeList];
+    }
+    //there should be an user-defined output but there isnt, so return undefined
+    if (!isCigListEmpty && outcomeIsEmpty) {
+      return null;
+    }
+    //2.2) If CIG list is empty then
+    //2.2.1) either return the output, if exits (from a logical point of view it makes no sense but it is not an error)
+    if (isCigListEmpty && !outcomeIsEmpty) {
+      return argsOutcomeList[0][outcomeList];
+    }
+    //2.2.2) or return the possibly modified value stored for the first dataPath object
+    if (isCigListEmpty && outcomeIsEmpty) {
+      if (dataDataPathObjectMap instanceof Map) {
+        let response = dataDataPathObjectMap.get(mainDataPath_label);
+        return (response !== undefined ? (Array.isArray(response) ? response : [response]) : null);
+      }
+    }
+  }
+
+  //if there are actions to be applied but no outcomes then this is an error
+  if (actions.length > 0 && outcomeIsEmpty) {
+    throw new ErrorHandler(
+      500,
+      `actions cannot be applied to Outcome list becuase it is empty or has output list empty.`
+    );
   }
 
   //now for each specific action:
@@ -788,13 +881,14 @@ async function getOutcomeList(
     //fetch their indices first:
 
     //the label in output
-    let outputPropLbl = actionObj[details][arg2];
+    let arg2_Lbl = actionObj[details][arg2];
 
     //the key for fetching the lhs argument
     let lhsArgKey = actionObj[details][arg1];
 
     //Next, use the lhs index to get the value for the lhs. Note that rhs could have many results to select from
-    let aLHSVal = argsPathListMap.get(lhsArgKey);
+    let aLHSVal = dataDataPathObjectMap instanceof Map ? dataDataPathObjectMap.get(lhsArgKey) : null;
+
 
     //Now we check whether the arguments is undefined, if it is, we implicitly take it as a positive result -we added undefined to hold a position- and skip to next action
     if (aLHSVal === undefined) continue;
@@ -819,7 +913,7 @@ async function getOutcomeList(
     //projection field
     //this is the RHS value
     //by default they are wrapped in a List
-    let arrElemAtOutput = "$$resultObject." + queryArgs + "." + outputPropLbl;
+    let arrElemAtOutput = "$$resultObject." + queryArgs + "." + arg2_Lbl;
 
     //object for the comparison
     let compObj; //TODO: comparison between 2 params and then result
@@ -910,6 +1004,7 @@ async function getOutcomeList(
     ]);
 
     //flatten outcome 2 layers down max items in result
+    //TODO: test 2 layers of flattening doesnt affect results that are lists where more than one outcome was satisfied
     logger.info(`result Array is ${JSON.stringify(resultArr)}`);
     mergedResults = flat(resultArr[0].results[0], 2);
   } catch (error) {
