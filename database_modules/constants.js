@@ -1,4 +1,5 @@
 const Qomparison= "Qomparison",
+ dataPathMap = "dataPathObjectMap",
     aDataPathLbl = "label",
     paramName= "parameter",
     isMandatory= "required",
@@ -46,6 +47,7 @@ const Qomparison= "Qomparison",
     noCIG="non-cig";
     export  {
         Qomparison,
+        dataPathMap,
         noCIG,
         paramName,
         isMandatory,

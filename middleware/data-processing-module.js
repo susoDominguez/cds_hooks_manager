@@ -169,7 +169,7 @@ function addFunctionsFromTemplateToArgsObject(eform) {
     ),
     //Map of arguments where the key is the parameter label and the value is the dataDataPathObject object.
     //To be extracted from clinical context as part of request
-    dataDataPathObjectMap: new Map(),
+    dataPathObjectMap: new Map(),
     //Output list, potentially a list of constraint satisfaction objects to be compared with arguments for selecting zero or more outcomes if triggered.
     argsOutcomeList: eform[outcomeList],
   };
@@ -197,17 +197,18 @@ function getDataPointValues(contextObj, docObj, dataPathMap) {
   //Fetch parameters, type properly and add to MAP.
   //Then apply to already existing MAP object the actions for comparisons to find results
   //or the existing result if not comparison is needed
+  logger.info("dataPathMap size is " + dataPathMap.size)
 
   //Array containing list of objects with data points to be extracted:
-  const dataDataPathObjectObjectsList = docObj[pathList];
+  const dataPathsObjectsList = docObj[pathList];
 
   //recognise as array
-  if (!Array.isArray(dataDataPathObjectObjectsList))
+  if (!Array.isArray(dataPathsObjectsList))
     throw new ErrorHandler(500, "field paths expected to be an array.");
 
   //for each path in pathList.
   //If path is empty list, deal with it later
-  for (const aDataPathObject of dataDataPathObjectObjectsList) {
+  for (const aDataPathObject of dataPathsObjectsList) {
     //check it has all the expected properties
     if (
       !(
@@ -275,8 +276,16 @@ function getDataPointValues(contextObj, docObj, dataPathMap) {
     if (valueFromContext === undefined) {
       //but optional:
       if (isDataOptional) {
-        //return undefined as value of this label, to hold the position in the array of arguments
-        dataPathMap.set(aDataPathObject_label, undefined);
+        try {
+                  //return undefined as value of this label, to hold the position in the array of arguments
+                dataPathMap.set(aDataPathObject_label, undefined);
+        } catch (error) {
+          throw new ErrorHandler(
+            500,
+            `MongoDB: In parameter ${docObj[paramName]}, data Object ${aDataPathObject_label} could not have been added to the dataPathMap. We get the following error: ${error}`
+          );
+        }
+
         //then continue to next iteration
         continue;
       } else {
@@ -289,7 +298,7 @@ function getDataPointValues(contextObj, docObj, dataPathMap) {
     }
 
     logger.info(
-      `dataDataPathObject ${aDataPathObject_label} returned value ${JSON.stringify(
+      `dataPathObject ${aDataPathObject_label} returned value ${JSON.stringify(
         valueFromContext
       )}`
     );
@@ -298,9 +307,17 @@ function getDataPointValues(contextObj, docObj, dataPathMap) {
 
     //typing the extracted data
     valueFromContext = typePathVal(aDataPathObject_datatype, valueFromContext);
+    try {
+      //add value to instance of Map associating labels (from dataPathObject list) to extracted values
+      dataPathMap.set(aDataPathObject_label, valueFromContext);
+    } catch (error) {
+      throw new ErrorHandler(
+        500,
+        `MongoDB: In parameter ${docObj[paramName]}, data Object ${aDataPathObject_label} could not have been added to the dataPathMap. We get the following error: ${error}`
+      );
+    }
 
-    //add value to instance of Map associating labels (from dataDataPathObject list) to extracted values
-    dataPathMap.set(aDataPathObject_label, valueFromContext);
+
   }
 }
 
@@ -471,11 +488,12 @@ function findReferencesInContext(hookContext, refsList, actObj) {
 
 /**
  * Using a given object, fetch value in MAp using object as key, else object is value itself
- * @param {Map} dataDataPathObjectMap Map structure containing dataDataPathObjects values referenced by their label
+ * @param {Map} dataPathObjectMap Map structure containing dataPathObjects values referenced by their label
  * @param {object} param Object that can be a key to obtain value or value directly
  */
-function fetchArgumentVal(dataDataPathObjectMap, param) {
-  return dataDataPathObjectMap.has(param) ? dataDataPathObjectMap.get(param) : param;
+function fetchArgumentVal(dataPathObjectMap, param) {
+  logger.info(dataPathObjectMap + ":" + param)
+  return dataPathObjectMap.has(param) ? dataPathObjectMap.get(param) : param;
 }
 
 /*** Applies user defined functions or actions between data extracted from hook context or subClassOf operator.
@@ -483,13 +501,13 @@ function fetchArgumentVal(dataDataPathObjectMap, param) {
  * @param {object} hookCntxtObj hook context with resources. To be used on a reference find
  * @param {object} outputObj output list. To be applied to isAncestor_eq
  * @param {array} funListAction array with functions
- * @param {Map} dataDataPathObjectsValMap map with data extracted from hook context referenced by dataDataPathObjects' parameter field
+ * @param {Map} dataPathMap map with data extracted from hook context referenced by dataDataPathObjects' parameter field
  */
 async function applyActions(
   hookCntxtObj,
   outputObj,
   funListAction,
-  dataDataPathObjectsValMap
+  dataPathMap
 ) {
   //if empty, there are no actions on queried data to be applied at this moment
   if (funListAction == []) return;
@@ -583,7 +601,13 @@ async function applyActions(
 
         //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
-        let arg1Val = dataDataPathObjectsValMap.get(arg_1);
+        if(!dataPathMap.has(arg_1)){
+          throw new ErrorHandler(
+            500,
+            `arg1 value: ${arg_1} could not be found as a label of on one of the dataPath objects.`
+          );
+        }
+        let arg1Val = dataPathMap.get(arg_1);
 
         //isAncestor_eq expects a list of conceptIds to check
         //link lists or add item to list
@@ -637,11 +661,11 @@ async function applyActions(
         //find Resources in context from a list of given references
         newVal = findReferencesInContext(
           hookCntxtObj,
-          dataDataPathObjectsValMap.get(arg_1),
+          dataPathMap.get(arg_1),
           actionObject
         );
         logger.info(
-          `FindRef: ${arg_1} has selection ${dataDataPathObjectsValMap.get(
+          `FindRef: ${arg_1} has selection ${dataPathMap.get(
             arg_1
           )}. Referenced values are ${newVal}`
         );
@@ -660,8 +684,8 @@ async function applyActions(
 
         //find whether argument is a key or a value to be applied directly
         //if key, get value from Map
-        let lhsArg = fetchArgumentVal(dataDataPathObjectsValMap, arg_1);
-        let rhsArg = fetchArgumentVal(dataDataPathObjectsValMap, arg_2);
+        let lhsArg = fetchArgumentVal(dataPathMap, arg_1);
+        let rhsArg = fetchArgumentVal(dataPathMap, arg_2);
 
 
         //To compare 2 values taken from the pathList,
@@ -739,12 +763,12 @@ async function applyActions(
         switch (operatorName) {
           case "getYearsFromNow":
             //this case has only one arg so index value has to be at index 0
-            newVal = getYearsFromNow(dataDataPathObjectsValMap.get(arg_1));
+            newVal = getYearsFromNow(dataPathMap.get(arg_1));
             break;
 
           case "calculate_age":
             //this case has only one arg so index value has to be at index 0
-            newVal = calculate_age(dataDataPathObjectsValMap.get(arg_1));
+            newVal = calculate_age(dataPathMap.get(arg_1));
             break;
 
           case "arr_diff_nonSymm":
@@ -752,16 +776,16 @@ async function applyActions(
             let arr1 = new Array();
             let arr2 = new Array();
 
-            if (!Array.isArray(dataDataPathObjectsValMap.get(arg_1))) {
-              arr1.push(dataDataPathObjectsValMap.get(arg_1));
+            if (!Array.isArray(dataPathMap.get(arg_1))) {
+              arr1.push(dataPathMap.get(arg_1));
             } else {
-              arr1 = dataDataPathObjectsValMap.get(arg_1);
+              arr1 = dataPathMap.get(arg_1);
             }
 
-            if (!Array.isArray(dataDataPathObjectsValMap.get(arg_2))) {
-              arr2.push(dataDataPathObjectsValMap.get(arg_2));
+            if (!Array.isArray(dataPathMap.get(arg_2))) {
+              arr2.push(dataPathMap.get(arg_2));
             } else {
-              arr2 = dataDataPathObjectsValMap.get(arg_2);
+              arr2 = dataPathMap.get(arg_2);
             }
 
             newVal = arr_diff_nonSymm(arr1, arr2);
@@ -772,7 +796,7 @@ async function applyActions(
     } //endOf main Switch
 
     //replace argument with resulting value
-    dataDataPathObjectsValMap.set(arg_1, newVal);
+    dataPathMap.set(arg_1, newVal);
   } //endOfLoop
 
   //arguments are arrays so pass-by-ref, hence no need to return changes
@@ -792,7 +816,7 @@ async function getOutcomeList(
   {
     funListAction = [], //actions to queried data plus subClassOf
     actions = [], //constraint satisfaction actions, including subClassOf
-    dataDataPathObjectMap,
+    dataPathObjectMap, 
     argsOutcomeList = [],
   },
   isCigListEmpty,
@@ -805,11 +829,12 @@ async function getOutcomeList(
   //1.Case where no data required to be extracted but there is some constant value that must be added for this router, regardless.
   //Then return outcome values from argsLhsList at index 0, as there is no reason to have more items in the array
   //this case should not happen anymore!
-  if ((dataDataPathObjectMap instanceof Map) && dataDataPathObjectMap.size === 0) {
+  if ((dataPathObjectMap instanceof Map) && dataPathObjectMap.size === 0){ 
     return (argsOutcomeList[0][outcome] ?? (new Array()));
   }
 
   let outcomeIsEmpty = argsOutcomeList.length === 0;
+  //check whether there is a structure but still no content
   if (!outcomeIsEmpty) {
     let outcomeObj = argsOutcomeList[0];
     outcomeIsEmpty = (!outcomeObj.hasOwnProperty(outcomeList) || (outcomeObj.hasOwnProperty(outcomeList) && Array.isArray(outcomeObj[outcomeList]) && outcomeObj[outcomeList].length === 0)) ? true : outcomeIsEmpty;
@@ -834,8 +859,10 @@ async function getOutcomeList(
     }
     //2.2.2) or return the possibly modified value stored for the first dataPath object
     if (isCigListEmpty && outcomeIsEmpty) {
-      if (dataDataPathObjectMap instanceof Map) {
-        let response = dataDataPathObjectMap.get(mainDataPath_label);
+      if (dataPathObjectMap instanceof Map) 
+{ 
+        let response = dataPathObjectMap.get(mainDataPath_label)
+  ; 
         return (response !== undefined ? (Array.isArray(response) ? response : [response]) : null);
       }
     }
@@ -887,7 +914,7 @@ async function getOutcomeList(
     let lhsArgKey = actionObj[details][arg1];
 
     //Next, use the lhs index to get the value for the lhs. Note that rhs could have many results to select from
-    let aLHSVal = dataDataPathObjectMap instanceof Map ? dataDataPathObjectMap.get(lhsArgKey) : null;
+    let aLHSVal = dataPathObjectMap instanceof Map ? dataPathObjectMap.get(lhsArgKey) : null; 
 
 
     //Now we check whether the arguments is undefined, if it is, we implicitly take it as a positive result -we added undefined to hold a position- and skip to next action

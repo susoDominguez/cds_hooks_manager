@@ -16,7 +16,8 @@ import {
   ciglist,
   pathList,
   aDataPathLbl,
-  noCIG
+  noCIG,
+  dataPathMap
 } from "../database_modules/constants.js";
 
 export default {
@@ -80,15 +81,22 @@ export default {
         //is the list of involved CIgs empty?
         let MongoDbDoc_CigListIsEmpty = 
         aMongoDbDoc.hasOwnProperty(cigInvolved) ? 
-          (Array.isArray(aMongoDbDoc[cigInvolved])? aMongoDbDoc[cigInvolved].length===0 : false) :
+          (Array.isArray(aMongoDbDoc[cigInvolved])? (aMongoDbDoc[cigInvolved].length===0) : false) :
            false;
 
-        //which dataPAth is first? this matters becuase when the value returned does not come from the outcome list
-        //then it comes from the resulting value of the first dataPath
+        //which dataPath is first? this matters because when the value returned does not come from the outcome list
+        //then it comes from the first dataPath object, which possibly may have been modified by actions on it.
         let mainDataPath_label = 
           aMongoDbDoc.hasOwnProperty(pathList) && aMongoDbDoc[pathList][0].hasOwnProperty(aDataPathLbl) ? 
           aMongoDbDoc[pathList][0][aDataPathLbl] :
           false;
+      //if main datapath label is false, then an error has ocurred
+      if(mainDataPath_label === false) {
+        throw new ErrorHandler(
+          500,
+          `The first data path object is missing some properties.`
+        );
+      }
 
       //create object with arguments and their applicable actions. It also contains output as taken from eform
       let actionsObj = addFunctionsFromTemplateToArgsObject(aMongoDbDoc);
@@ -96,7 +104,7 @@ export default {
       //transform dataPaths from e-form in fetch document into a map where the key is the eform parameter label
 
       //fetch specific data from hook context using mongodb e-forms, then add to MAP dataPathMap in actionsObj
-      const dataPathMap = "dataPathMap";
+
       getDataPointValues(body, aMongoDbDoc, actionsObj[dataPathMap]);
 
       //apply first: user-defined functions, then comparisons between arguments and subClassOf checks,
