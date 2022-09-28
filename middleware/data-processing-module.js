@@ -277,8 +277,8 @@ function getDataPointValues(contextObj, docObj, dataPathMap) {
       //but optional:
       if (isDataOptional) {
         try {
-                  //return undefined as value of this label, to hold the position in the array of arguments
-                dataPathMap.set(aDataPathObject_label, undefined);
+          //return undefined as value of this label, to hold the position in the array of arguments
+          dataPathMap.set(aDataPathObject_label, undefined);
         } catch (error) {
           throw new ErrorHandler(
             500,
@@ -601,7 +601,7 @@ async function applyActions(
 
         //Obtain conceptId from  from outcomeList using jsonata
         //for each conceptId, apply isAncestor_eq
-        if(!dataPathMap.has(arg_1)){
+        if (!dataPathMap.has(arg_1)) {
           throw new ErrorHandler(
             500,
             `arg1 value: ${arg_1} could not be found as a label of on one of the dataPath objects.`
@@ -802,6 +802,8 @@ async function applyActions(
   //arguments are arrays so pass-by-ref, hence no need to return changes
 }
 
+//TODO: REVIEW
+
 /**
  * @param {Model} model model of db schema
  * @param {string} keyParam parameter label
@@ -816,7 +818,7 @@ async function getOutcomeList(
   {
     funListAction = [], //actions to queried data plus subClassOf
     actions = [], //constraint satisfaction actions, including subClassOf
-    dataPathObjectMap, 
+    dataPathObjectMap,
     argsOutcomeList = [],
   },
   isCigListEmpty,
@@ -829,7 +831,7 @@ async function getOutcomeList(
   //1.Case where no data required to be extracted but there is some constant value that must be added for this router, regardless.
   //Then return outcome values from argsLhsList at index 0, as there is no reason to have more items in the array
   //this case should not happen anymore!
-  if ((dataPathObjectMap instanceof Map) && dataPathObjectMap.size === 0){ 
+  if ((dataPathObjectMap instanceof Map) && dataPathObjectMap.size === 0) {
     return (argsOutcomeList[0][outcome] ?? (new Array()));
   }
 
@@ -850,7 +852,7 @@ async function getOutcomeList(
     }
     //there should be an user-defined output but there isnt, so return undefined
     if (!isCigListEmpty && outcomeIsEmpty) {
-      return null;
+      return undefined;
     }
     //2.2) If CIG list is empty then
     //2.2.1) either return the output, if exits (from a logical point of view it makes no sense but it is not an error)
@@ -859,11 +861,8 @@ async function getOutcomeList(
     }
     //2.2.2) or return the possibly modified value stored for the first dataPath object
     if (isCigListEmpty && outcomeIsEmpty) {
-      if (dataPathObjectMap instanceof Map) 
-{ 
-        let response = dataPathObjectMap.get(mainDataPath_label)
-  ; 
-        return (response !== undefined ? (Array.isArray(response) ? response : [response]) : null);
+      if (dataPathObjectMap instanceof Map) {
+        return dataPathObjectMap.get(mainDataPath_label) ;
       }
     }
   }
@@ -914,7 +913,7 @@ async function getOutcomeList(
     let lhsArgKey = actionObj[details][arg1];
 
     //Next, use the lhs index to get the value for the lhs. Note that rhs could have many results to select from
-    let aLHSVal = dataPathObjectMap instanceof Map ? dataPathObjectMap.get(lhsArgKey) : null; 
+    let aLHSVal = dataPathObjectMap instanceof Map ? dataPathObjectMap.get(lhsArgKey) : null;
 
 
     //Now we check whether the arguments is undefined, if it is, we implicitly take it as a positive result -we added undefined to hold a position- and skip to next action
