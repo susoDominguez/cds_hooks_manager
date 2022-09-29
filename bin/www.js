@@ -4,7 +4,7 @@
  * Module dependencies.
  */
 import app from '../app.js'
-import createDebugbMessages from "debug";
+import createDebugbMessages from 'debug';
 var debug = createDebugbMessages('cds_hooks_manager:server');
 import http from 'http';
 import gracefulShutdown from 'http-graceful-shutdown';
