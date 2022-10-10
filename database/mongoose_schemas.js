@@ -1,5 +1,5 @@
 import * as mongoose from "mongoose";
-import isAncestor_eq from "./constants.js";
+//import  from "./constants.js";
 //Define a schema
 const Schema = mongoose.Schema;
 

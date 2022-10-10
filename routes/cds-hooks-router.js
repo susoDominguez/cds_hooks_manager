@@ -1,7 +1,7 @@
 import express from "express";
 import dpcPackgDefault from "../middleware/data-processing-component.js";
 const { fetchParams, requestCdsServices } = dpcPackgDefault;
-import serFindPackgDef from "../database_modules/service_finders.js";
+import serFindPackgDef from "../database/service_finders.js";
 const  { getCdsServices, getCdsServicesByCig } = serFindPackgDef;
 import asyncMiddleware from "../lib/asyncMiddleware.js";
 var router = express.Router();

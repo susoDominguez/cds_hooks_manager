@@ -2,10 +2,12 @@ import mongoose from "mongoose";
 import { servicesConnection, connectionsList } from "./connections.js";
 //import logger from "../config/winston.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
+import logger from "../config/winston.js";
 //this is the subClassOf operator lab.jsel
-import { isAncestor_eq } from "./constants.js";
+//import {  } from "./constants.js";
 //Define a sche.jsma
 const Schema = mongoose.Schema;
+
 
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
 /*
@@ -173,11 +175,22 @@ const paramSchema = new mongoose.Schema(
               //find references given a list of identifiers
               "findRef",
               //aarg1 list is subset of arg2 list?
-              "subSetOf",
+              "isSubsetOf",
               //arg2 list is subset of arg1 list?
-              "subSetOfLhs",
-              //arg1 (List) is in a non-strict subclass relation with arg2
-              isAncestor_eq,
+              "isSubsetOfLhs",
+              //arg 1 is subsumed by arg2 - applied as query constraint
+              "is_a",
+               //arg 1 is subsumes arg2 - applied as query constraint
+              "has_a",
+              //one arg only
+              "parentOf",
+              "parentOrSelfOf",
+              "childOf",
+              "childOrSelfOf",
+              "descendantOf",
+              "descendantOrSelfOr",
+              "ancestorOf",
+              "ancestorOrSelfOf"
             ],
             default: "in",
             required: true,
@@ -198,24 +211,41 @@ const paramSchema = new mongoose.Schema(
                 type: String,
                 required: false,
                 //add function symbols here
-                enum: ["eq", "gt", "gte", "lt", "lte", "ne"],
+                //enum: ["eq", "gt", "gte", "lt", "lte", "ne"],
               },
               //case findRef //TODO: review this
               Jpath: { 
                 type: String, 
-                required: false },
+                required: false 
+              },
               typeOf: {
                 type: String,
                 required: false,
                 enum: ["boolean", "array", "string", "date", "number"],
                 default: "string",
               },
-              //find concept relations: Terminology system
-              codeSystem: {
+              termSystem: {
                 type: String,
                 required: false,
                 enum: ["SCT", "LOINC", "READ","ICD10"],
               },
+              //find concept relations: Terminology system
+              codeSystem: {
+                type: String,
+                required: false
+              },
+              version: {
+                type: String,
+                required: false
+              },
+              filter: {
+                type: String,
+                required: false
+              },
+              count: {
+                type: Number,
+                required: false
+              }
             },
           },
         }

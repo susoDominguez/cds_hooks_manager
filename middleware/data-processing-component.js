@@ -1,24 +1,21 @@
 import {
   getDataPointValues,
-  getOutcomeList,
+  getOutcome,
   applyActions,
   addFunctionsFromTemplateToArgsObject,
   callCdsServicesManager
 } from "./data-processing-module.js";
-import { getModelbyCig } from "../database_modules/models.js";
+import { getModelbyCig } from "../database/models.js";
 import logger from "../config/winston.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
-//const { MONGODB_NON_CIG_DB } = process.env;
 import {
   paramName,
   cigInvolved,
-  datalist,
-  ciglist,
-  pathList,
-  aDataPathLbl,
   noCIG,
-  dataPathMap
-} from "../database_modules/constants.js";
+  dataPathMap,
+  pathList,
+  outputArray
+} from "../database/constants.js";
 
 export default {
   /**
@@ -66,59 +63,52 @@ export default {
     //get cursor Promise to all parameters from this request
     for await (const aMongoDbDoc of Model.find().lean()) {
       //key of Map
-      let mongoDbDoc_Label = aMongoDbDoc.hasOwnProperty(paramName) ? aMongoDbDoc[paramName] : undefined;
+      let aMongoDbDocName = aMongoDbDoc.hasOwnProperty(paramName) ? aMongoDbDoc[paramName] : undefined;
+
       //if label of eform missing, throw error
-      if (mongoDbDoc_Label === undefined)
+      if (typeof aMongoDbDocName === 'undefined')
         throw new ErrorHandler(
           500,
           `a parameter label is missing on the mongoDB document.`
         );
 
-        //is the list of involved CIgs empty?
-        let MongoDbDoc_CigListIsEmpty = 
-        aMongoDbDoc.hasOwnProperty(cigInvolved) ? 
-          (Array.isArray(aMongoDbDoc[cigInvolved])? (aMongoDbDoc[cigInvolved].length===0) : false) :
-           false;
-
-        //which dataPath is first? this matters because when the value returned does not come from the outcome list
-        //then it comes from the first dataPath object, which possibly may have been modified by actions on it.
-        let mainDataPath_label = 
-          aMongoDbDoc.hasOwnProperty(pathList) && aMongoDbDoc[pathList][0].hasOwnProperty(aDataPathLbl) ? 
-          aMongoDbDoc[pathList][0][aDataPathLbl] :
-          false;
-      //if main datapath label is false, then an error has ocurred
-      if(mainDataPath_label === false) {
-        throw new ErrorHandler(
-          500,
-          `The first data path object is missing some properties.`
-        );
-      }
+      logger.info(`Processing MongoDB document with parameter = ${aMongoDbDocName}`)
 
       //create object with arguments and their applicable actions. It also contains output as taken from eform
       let actionsObj = addFunctionsFromTemplateToArgsObject(aMongoDbDoc);
 
+      //keep track of the first datapath object to return its values if no constraint satisfaction actions are required
+      const datapathArg1 = aMongoDbDoc.hasOwnProperty(pathList) ? aMongoDbDoc[pathList][0]['label'] : undefined;
+      if(typeof datapathArg1 === 'undefined') throw new ErrorHandler(
+        500,
+        `Missing dataPath object from MongoDB document with parameter name ${aMongoDbDocName}.`
+      );
       //transform dataPaths from e-form in fetch document into a map where the key is the eform parameter label
-
-      //fetch specific data from hook context using mongodb e-forms, then add to MAP dataPathMap in actionsObj
-
+      //fetch specific data from hook context using mongodb e-forms, then add to MAP dataPathMap
       getDataPointValues(body, aMongoDbDoc, actionsObj[dataPathMap]);
 
       //apply first: user-defined functions, then comparisons between arguments and subClassOf checks,
       // to RHS argument array in the object (no return value req as it is pass-by-ref)
-      await applyActions(
+      await  applyActions(
         body,
-        actionsObj["argsOutcomeList"],
-        actionsObj["funListAction"],
+        actionsObj["processingActions"],
         actionsObj[dataPathMap]
       );
 
       //produce list of results for each dataPath object:
       //if the list of involved CIGs is empty or we are using the non-cig Model,
       //return a mapping, otherwise return the selected Output
-      let outcomeVal = await getOutcomeList(Model, mongoDbDoc_Label, actionsObj, MongoDbDoc_CigListIsEmpty, mainDataPath_label);
+      let outcomeVal = await getOutcome(
+        Model,
+        aMongoDbDocName,
+        actionsObj[dataPathMap],
+        actionsObj['constraintActions'],
+        actionsObj[outputArray],
+        datapathArg1
+        );
 
       logger.info(
-        `value to be added to Map for eform ${mongoDbDoc_Label} is: ${JSON.stringify(
+        `value to be added to Map for eform ${aMongoDbDocName} is: ${JSON.stringify(
           outcomeVal
         )}`
       );
@@ -126,27 +116,25 @@ export default {
       //if from CIG-based router, output is an object containing values and (possibly) CIG involved
       //if not, output is just the values
       //create value object for given eform in Map
-     
-      let aParam = new Object({"name": undefined, "value": undefined});
+     if(typeof outcomeVal !== 'undefined') {
+      let aParam = new Object({"name": aMongoDbDocName });
 
       //could it be different for other models
        switch (cigModel) {
         default:
-          aParam["name"] = mongoDbDoc_Label;
+          //add value
           aParam["value"] = outcomeVal;
           // to represent the CIG(s) the value data (possibly sub-CIG ids) belongs to
-          if(aMongoDbDoc.hasOwnProperty(cigInvolved) && Array.isArray(aMongoDbDoc[cigInvolved]) && aMongoDbDoc[cigInvolved].length > 0 ) aParam["cigsInvolved"] = aMongoDbDoc[cigInvolved];
+          if(aMongoDbDoc.hasOwnProperty(cigInvolved) && Array.isArray(aMongoDbDoc[cigInvolved]) && aMongoDbDoc[cigInvolved].length > 0 ) aParam["activeCIG"] = aMongoDbDoc[cigInvolved];
           parameters.push(aParam);
           break;
-          //TODO: to be discarded and added to cds services manager
-          //add new CIG to the array of the collection of CIGs from all Mongodb documents, avoiding repetition
-         // for (const cig of cigs) {
-          //  if (!requiredCIGs.includes(cig)) requiredCIGs.push(cig);
       } 
 
       logger.info(
         `Parameters array has data: ${JSON.stringify(parameters)}`
       );
+     }
+
     }//endOf for await loop
 
     //Parameters to transfer to next middleware
@@ -164,11 +152,11 @@ export default {
   requestCdsServices: async function (req, res, next) {
       
       //convert Map to object
-      let cdsData = JSON.stringify( Object.fromEntries(res.locals.hookData) );
+      let cdsData = JSON.parse(JSON.stringify(res.locals.hookData));
       logger.info(`cdsData is ${cdsData}`);
       //send request
-       const data = await callCdsServicesManager(req.params.hook, req.params.cigId, cdsData);
+     //  const data = await callCdsServicesManager(req.params.hook, req.params.cigId, cdsData);
        //return response
-       res.status(200).json(data);
+       res.status(200).json(cdsData);
   }
 };

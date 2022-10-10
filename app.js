@@ -1,3 +1,4 @@
+import './loadEnv.js';
 import express from 'express';
 import * as path from 'path';
 import cookieParser from 'cookie-parser';
@@ -8,9 +9,6 @@ import  { handleError } from './lib/errorHandler.js';
 import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
 import xss from 'xss-clean';
-// Environment vars
-import dotenv from 'dotenv';
-dotenv.config();
 import {router} from './routes/cds-hooks-router.js';
 //const { initDb } = import('./database_modules/dbConnection_Mongoose');
 import * as url from 'url';
@@ -22,12 +20,12 @@ const app = express();
 
 //init cds-services DB
 //initDb().then( () => logger.info('cds-services database initiated successfully')).catch( err => logger.info('cds-services Db not init: ' + err));
-
 // view engine setup
-//environmental variables TODO: define later
+//environmental variables
 app.set('port', process.env.PORT || 3000)
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
+
 
 const limit = rateLimit({
   max: 100,// max requests
