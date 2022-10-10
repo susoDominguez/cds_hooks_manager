@@ -161,7 +161,7 @@ async function getSnomedQueryResult(actionObj, codesA, codesB) {
       })
     );
 
-    logger.info("getSnomedQueryResult: returns = " + JSON.stringify(res));
+    //logger.info("getSnomedQueryResult: returns = " + JSON.stringify(res));
   } catch (error) {
     throw new ErrorHandler(500, "getSnomedQueryResult: " + error.message);
   }

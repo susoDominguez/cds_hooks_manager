@@ -193,7 +193,7 @@ const paramSchema = new mongoose.Schema(
               "ancestorOrSelfOf"
             ],
             default: "in",
-            required: true,
+            required: false,
           },
           details: {
             type: {
@@ -256,11 +256,11 @@ const paramSchema = new mongoose.Schema(
     output: { //field outcome of type array is mandatory
       type: [
         {
-        queryArgs: { type: [Schema.Types.Mixed], required: true, default: [] },
+        constraintParam: { type: [Schema.Types.Mixed], required: true, default: [] },
         outcome: { type: [Schema.Types.Mixed], required: true, default: [] },
       },
     ],
-      required: true,
+      required: false,
       default: [],
     },
   },

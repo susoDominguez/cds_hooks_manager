@@ -916,10 +916,10 @@ async function getOutcome(
     if (arg1_val === undefined) continue;
 
     //convert arg1 into an array. Then, transform as required by actions.
-    if (!Array.isArray(arg1_val)) arg1_val = [arg1_val];
+   // if (!Array.isArray(arg1_val)) arg1_val = [arg1_val];
 
     //keep track of whether it is a singleton
-    let isSingletonLHSValue = arg1_val.length < 2;
+    //let isSingletonLHSValue = arg1_val.length < 2;
 
     //get the name of the operation
     let actionName = aConstraintAction[action];
@@ -939,9 +939,8 @@ async function getOutcome(
     ///now construct the query//
 
     //projection field
-    //this is the RHS value
-    //by default they are wrapped in a List
-    let arrElemAtOutput = "$$resultObject." + queryArgs + "." + arg2Key;
+    //this is the RHS value (arg2)
+    let aConstraintParamElem = "$$resultObject." + queryArgs + "." + arg2Key;
 
     //object for the comparison
     let compObj; //TODO: comparison between 2 params and then result
@@ -957,6 +956,7 @@ async function getOutcome(
         );
         //flatten result and  remove repeated vals
         constraints = [...new Set(flat(constraints))];
+
         //check all values are numeric
         if (constraints.some(isNaN))
           throw new ErrorHandler(
@@ -965,6 +965,8 @@ async function getOutcome(
               aConstraintAction
             )}`
           );
+          //function takes an array for codes so check arg1 is array or wrap into array
+          if (!Array.isArray(arg1_val)) arg1_val = [arg1_val];
 
         if (arg1_val.some(isNaN))
           throw new ErrorHandler(
@@ -1014,54 +1016,56 @@ async function getOutcome(
         results = [...new Set(flat(results))];
 
         //then use results as part of subsetLhs query
-        compObj = { $setIsSubset: [arrElemAtOutput, results] };
+        compObj = { $in: [aConstraintParamElem, results] };
         break;
+        ////////////////////////////
       case "eq":
-        compObj = {
-          $eq: [arg1_val, arrElemAtOutput],
+        compObj = { 
+          $eq: [arg1_val, aConstraintParamElem],
         };
         break;
       case "gte":
+        if(Array.isArray(arg1_val) && arg1_val.length === 1)  arg1_val = arg1_val[0];
         compObj = {
-          $gte: [arg1_val, arrElemAtOutput],
+          $gte: [arg1_val, aConstraintParamElem],
         };
         break;
       case "gt":
+        if(Array.isArray(arg1_val) && arg1_val.length === 1)  arg1_val = arg1_val[0];
         compObj = {
-          $gt: [arg1_val, arrElemAtOutput],
+          $gt: [arg1_val, aConstraintParamElem],
         };
         break;
       case "lte":
+        if(Array.isArray(arg1_val) && arg1_val.length === 1)  arg1_val = arg1_val[0];
         compObj = {
-          $lte: [arg1_val, arrElemAtOutput],
+          $lte: [arg1_val, aConstraintParamElem],
         };
         break;
       case "lt":
+        if(Array.isArray(arg1_val) && arg1_val.length === 1)  arg1_val = arg1_val[0];
         compObj = {
-          $lt: [arg1_val, arrElemAtOutput],
+          $lt: [arg1_val, aConstraintParamElem],
         };
         break;
-      case "in": //RHS is the outputArray
-        //element in output.queryArgs.[arg2] is an array by default. Test it has more than one arg
-        //2 cases:
-        //case 1: LHS is not an array
-        if (isSingletonLHSValue) {
-          compObj = { $in: [arg1_val[0], arrElemAtOutput] };
-        } else {
-          //case 2: LHS is an array of size > 1
-          // find whether the LHS array is a subset of the RHS array
-          compObj = { $setIsSubset: [arg1_val, arrElemAtOutput] };
-        }
+      case "in":
+         if(Array.isArray(arg1_val) && arg1_val.length === 1)  arg1_val = arg1_val[0];
+          compObj = { $in: [arg1_val, aConstraintParamElem] };
         break;
       case "inLhs":
-      case isA:
+        if(!Array.isArray(arg1_val))  arg1_val = [arg1_val];
+          compObj = { $in: [aConstraintParamElem, arg1_val] };
+        break;
       case "subsetOfLhs":
-        compObj = { $setIsSubset: [arrElemAtOutput, arg1_val] };
+        if(!Array.isArray(arg1_val))  arg1_val = new Array(arg1_val);
+        compObj = { $setIsSubset: [aConstraintParamElem, arg1_val] };
         break;
       case "subsetOf":
-        compObj = { $setIsSubset: [arg1_val, arrElemAtOutput] };
+        if(!Array.isArray(arg1_val))  arg1_val = new Array(arg1_val);
+        compObj = { $setIsSubset: [arg1_val, aConstraintParamElem] };
         break;
     } //endOf switch
+    
     //add elemMatch to object
     conditionList.push(compObj);
     //logger.info("Condition is " + JSON.stringify(compObj));
