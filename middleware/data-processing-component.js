@@ -116,16 +116,27 @@ export default {
       //if from CIG-based router, output is an object containing values and (possibly) CIG involved
       //if not, output is just the values
       //create value object for given eform in Map
-     if((Array.isArray(outcomeVal) && outcomeVal.length === 0) || typeof outcomeVal !== 'undefined') {
-      let aParam = new Object({"name": aMongoDbDocName });
+     if((Array.isArray(outcomeVal) && outcomeVal.length > 0) || typeof outcomeVal !== 'undefined') {
+      let aParam = new Array(aMongoDbDocName);
 
       //could it be different for other models
        switch (cigModel) {
-        default:
+        case 'tmr':
           //add value
-          aParam["value"] = outcomeVal;
+          let valObj = { "value": outcomeVal };
           // to represent the CIG(s) the value data (possibly sub-CIG ids) belongs to
-          if(aMongoDbDoc.hasOwnProperty(cigInvolved) && Array.isArray(aMongoDbDoc[cigInvolved]) && aMongoDbDoc[cigInvolved].length > 0 ) aParam["activeCIG"] = aMongoDbDoc[cigInvolved];
+          if(aMongoDbDoc.hasOwnProperty(cigInvolved) 
+          && Array.isArray(aMongoDbDoc[cigInvolved]) 
+          && aMongoDbDoc[cigInvolved].length > 0 ) valObj["activeCIG"] = aMongoDbDoc[cigInvolved];
+          //add value object to parameter array
+          aParam.push(valObj)
+          //add parameter array to final array
+          parameters.push(aParam);
+          break;
+        default:
+          //add value object to parameter array
+          aParam.push(outcomeVal)
+          //add parameter array to final array
           parameters.push(aParam);
           break;
       } 
@@ -138,7 +149,7 @@ export default {
     }//endOf for await loop
 
     //Parameters to transfer to next middleware
-    res.locals.hookData = { "parameters" : parameters};
+    res.locals.hookData =  parameters;
 
     //call next middleware
     next();
@@ -150,13 +161,12 @@ export default {
    * @param {object} next callback
    */
   requestCdsServices: async function (req, res, next) {
-      
       //convert Map to object
       let cdsData = JSON.parse(JSON.stringify(res.locals.hookData));
-      logger.info(`cdsData is ${cdsData}`);
+      //logger.info(`cdsData is ${cdsData}`);
       //send request
-     //  const data = await callCdsServicesManager(req.params.hook, req.params.cigId, cdsData);
+      const data = await callCdsServicesManager(req.params.hook, req.params.cigId, cdsData);
        //return response
-       res.status(200).json(cdsData);
+       res.status(200).json(data);
   }
 };

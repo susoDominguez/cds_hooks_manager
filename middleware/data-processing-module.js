@@ -61,7 +61,7 @@ const {
 } = process.env;
 //cds services manager url
 //not using SSL yet
-const url_CdsServices = `http://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/${CDS_SERVICES_MS_PATH}/`;
+const url_CdsServices = `http://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/cds-services/`;
 ///////////////////////////////////////////////////////
 /**
  *
@@ -71,7 +71,7 @@ const url_CdsServices = `http://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/
  * @returns response from cds services manager microservice
  */
 async function callCdsServicesManager(hookId, cigId, reqData) {
-  const cigModel = hookId + (cigId ? `/cigModel/${cigId}` : ``);
+  const cigModel = hookId + ( (typeof cigId !== 'undefined') ? `/cigModel/${cigId}` : ``);
   //construct URL
   const baseURL = url_CdsServices + cigModel;
 
