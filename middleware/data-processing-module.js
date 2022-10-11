@@ -71,6 +71,7 @@ const url_CdsServices = `http://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/
  * @returns response from cds services manager microservice
  */
 async function callCdsServicesManager(hookId, cigId, reqData) {
+
   const cigModel = hookId + ( (typeof cigId !== 'undefined') ? `/cigModel/${cigId}` : ``);
   //construct URL
   const baseURL = url_CdsServices + cigModel;
@@ -80,7 +81,7 @@ async function callCdsServicesManager(hookId, cigId, reqData) {
     method: "post",
     url: baseURL,
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/json"
     },
     data: reqData,
   };
