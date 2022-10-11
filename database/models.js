@@ -305,10 +305,10 @@ const cdsServiceSchema = new mongoose.Schema(
     services: {
       type: [
         {
-          hook: { type: String, required: true, default: "careplan-review" },
+          hook: { type: String, required: true, default: "copd-careplan-review" },
           title: { type: String, required: true },
           description: { type: String, required: true },
-          id: { type: String, required: true, default: "careplan-review" },
+          id: { type: String, required: true, default: "copd-careplan-review" },
           prefetch: { type: Schema.Types.Mixed, required: false },
         },
       ],

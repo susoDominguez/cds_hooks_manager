@@ -5,9 +5,12 @@ import logger from "../config/winston.js";
 const {
   MONGODB_HOST,
   MONGODB_PORT,
-  MONGODB_CDS_SERVICES,
   MONGODB_CIG_MODEL,
-  MONGODB_NON_CIG_DB,
+  MONGODB_CIG_MODEL_2,
+  MONGODB_CIG_MODEL_3,
+  MONGODB_CIG_MODEL_4,
+  MONGODB_CIG_MODEL_5,
+  MONGODB_NONCIG_DB_NAME,
 } = process.env;
 
 const options = {
@@ -24,13 +27,19 @@ const options = {
 const host = MONGODB_HOST || "localhost";
 const port = MONGODB_PORT || "27017";
 ///CDS SERVICES OFFERED: MONGODB CONNECTION
-const cds_services_db = MONGODB_CDS_SERVICES || "cds-services";
+const cds_services_db = "cds-services";
 /// NON-CIG MODEL: MONGODB CONNECTION
-const non_cig_db = MONGODB_NON_CIG_DB || "non-cig-db";
+const non_cig_name = MONGODB_NONCIG_DB_NAME || "non-cig";
 //ADD BELOW INTEGRATED CIG FORMALISMS MONGODB
 /// TMR MODEL:  MONGODB CONNECTION
-const cig_model_db = MONGODB_CIG_MODEL || "tmr-db";
+const cig_model_name =    MONGODB_CIG_MODEL || "tmr";
+const cig_model_2_name = MONGODB_CIG_MODEL_2  || undefined;
+const cig_model_3_name = MONGODB_CIG_MODEL_3  || undefined;
+const cig_model_4_name = MONGODB_CIG_MODEL_4  || undefined;
+const cig_model_5_name = MONGODB_CIG_MODEL_5  || undefined;
+let cigModelNames = new Array(cig_model_name,cig_model_2_name,cig_model_3_name,cig_model_4_name,cig_model_5_name);
 //logger.info('env is ' + JSON.stringify(process.env));
+
 //create a new DB connection
 function makeNewConnection(uri) {
    
@@ -68,23 +77,27 @@ const servicesConnection = makeNewConnection(
   `mongodb://${host}:${port}/${cds_services_db}`
 );
 
-//non-cig DB
-const nonCigConnection = makeNewConnection(
-  `mongodb://${host}:${port}/${non_cig_db}`
-);
-
-//ADD BELOW INTEGRATED CIG FORMALISMS MONGODB CONNECTION
-//tmr model DB
-const cig_model_connection = makeNewConnection(
-  `mongodb://${host}:${port}/${cig_model_db}`
-);
-
 //key-value list of available databases for CDS Services
 let connectionsList = new Map();
 
+//non-cig DB
+const nonCigConnection = makeNewConnection(
+  `mongodb://${host}:${port}/${non_cig_name}-db`
+);
 //add new connections to MAP
-connectionsList.set("non-cig", nonCigConnection);
-//add cig formalisms connections below
-connectionsList.set("tmr", cig_model_connection);
+connectionsList.set(MONGODB_NONCIG_DB_NAME, nonCigConnection);
+
+//ADD BELOW INTEGRATED CIG FORMALISMS MONGODB CONNECTION
+cigModelNames.forEach( modelName => {
+  if(typeof modelName !== 'undefined'){
+    //CIG model DB
+    let cig_model_connection = makeNewConnection(
+      `mongodb://${host}:${port}/${modelName}-db`
+    );
+      //add cig formalism connection to list
+    connectionsList.set(modelName, cig_model_connection);
+  }
+})
+
 
 export { servicesConnection, connectionsList };

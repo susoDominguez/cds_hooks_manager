@@ -116,7 +116,7 @@ export default {
       //if from CIG-based router, output is an object containing values and (possibly) CIG involved
       //if not, output is just the values
       //create value object for given eform in Map
-     if(typeof outcomeVal !== 'undefined') {
+     if((Array.isArray(outcomeVal) && outcomeVal.length === 0) || typeof outcomeVal !== 'undefined') {
       let aParam = new Object({"name": aMongoDbDocName });
 
       //could it be different for other models
