@@ -198,7 +198,7 @@ function addFunctionsFromTemplateToArgsObject(mongoDbDoc) {
     //To be extracted from clinical context as part of request
     dataPathObjectMap: new Map(),
     //Output list, potentially a list of constraint satisfaction objects to be compared with arguments for selecting zero or more outcomes if triggered.
-    output: mongoDbDoc.hasOwnProperty(outputArray)
+    constraints: mongoDbDoc.hasOwnProperty(outputArray)
       ? mongoDbDoc[outputArray]
       : new Array(),
   };
@@ -830,7 +830,7 @@ async function applyActions(hookCntxtObj, processingActions, dataPathMap) {
  * @param {String} keyParam parameter name
  * @param {Map} datapathMap datapath values
  * @param {Array} constraintActions actions applied to output
- * @param {Array} outputList output as taken from MOngoDb document
+ * @param {Array} constraints output as taken from MOngoDb document
  * @param {String} datapathArg1 label of first element in dataPaths array
  * @returns {Array} Array of results
  */
@@ -839,13 +839,13 @@ async function getOutcome(
   keyParam,
   datapathMap,
   constraintActions, //constraint satisfaction actions
-  outputList,
+  constraints,
   datapathArg1
 ) {
   //SPECIAL CASES
 
   //check output array is empty
-  let isOutputEmpty = outputList.length === 0 || (typeof outputList === "undefined") ;
+  let isOutputEmpty = constraints.length === 0 || (typeof constraints === "undefined") ;
 
   //if there are actions to be applied but no outcomes then this is an error
   if (constraintActions.length > 0 && isOutputEmpty) {
@@ -863,7 +863,7 @@ async function getOutcome(
       throw new ErrorHandler(
         500,
         `${keyParam} has no constraint satisfaction actions and a non-empty output field = ${JSON.stringify(
-          outputList
+          constraints
         )}. This is not allowed.`
       );
     //return datapath values
@@ -951,7 +951,7 @@ async function getOutcome(
       case "has_a":
         //dont add results to dataPath but use directly as other subsumptions could use the same values
         //retrieve all values from the constraint object in output for this arg2 key
-        let constraints = outputList.map(
+        let constraints = constraints.map(
           (constr) => constr[queryArgs][arg2Key]
         );
         //flatten result and  remove repeated vals
