@@ -55,7 +55,6 @@ import {
 } from "../snomedct/ecl.js";
 //const qs from "querystring";
 const {
-  SNOMEDCT_BASE_URL,
   CDS_SERVICES_MS_HOST,
   CDS_SERVICES_MS_PORT,
   CDS_SERVICES_MS_PATH,
@@ -808,7 +807,15 @@ async function applyActions(hookCntxtObj, processingActions, dataPathMap) {
             break;
 
           case "arr_diff_nonSymm":
-            newVal = arr_diff_nonSymm(arr1, arr2);
+             //only if 2 args are given
+        if (typeof arg2Ref === "undefined" || arg2Ref === null)
+        throw new ErrorHandler(
+          500,
+          `action 'arr_diff_nonSymm' not applied: second argument (arg2), either a dataPath reference or a value, is missing.`
+        );
+      //get arg2 value
+      let arg2Val = fetchArgumentVal(dataPathMap, arg2Ref);
+            newVal = arr_diff_nonSymm(arg1Val, arg2Val);
             break;
         }
 
@@ -851,7 +858,7 @@ async function getOutcome(
   if (constraintActions.length > 0 && isOutputEmpty) {
     throw new ErrorHandler(
       500,
-      `Constraint satisfaction actions cannot be applied to Outcome list because list is empty or missing parameters. Parameter = ${keyParam}.`
+      `Constraint satisfaction actions cannot be applied to 'constraints' because list is empty or missing parameters. Parameter = ${keyParam}.`
     );
   }
 
@@ -951,17 +958,17 @@ async function getOutcome(
       case "has_a":
         //dont add results to dataPath but use directly as other subsumptions could use the same values
         //retrieve all values from the constraint object in output for this arg2 key
-        let constraints = constraints.map(
+        let dataPathRefVals = constraints.map(
           (constr) => constr[queryArgs][arg2Key]
         );
         //flatten result and  remove repeated vals
-        constraints = [...new Set(flat(constraints))];
+        dataPathRefVals = [...new Set(flat(dataPathRefVals))];
 
         //check all values are numeric
-        if (constraints.some(isNaN))
+        if (dataPathRefVals.some(isNaN))
           throw new ErrorHandler(
             500,
-            `Some value(s) from arg2 (${constraints}) are not numeric when unpacking ${JSON.stringify(
+            `Some value(s) from arg2 (${dataPathRefVals}) are not numeric when unpacking ${JSON.stringify(
               aConstraintAction
             )}`
           );
@@ -981,7 +988,7 @@ async function getOutcome(
         let results = await getSnomedQueryResult(
           aConstraintAction,
           arg1_val,
-          constraints
+          dataPathRefVals
         );
 
         //apply jsonata to results (array of array)
@@ -989,14 +996,14 @@ async function getOutcome(
         //if 'error:' in response of one getDataFromContext application then error thrown
         results = results.map((arr) => {
           //this array must have same length as constraints array
-          if (arr.length !== constraints.length)
+          if (arr.length !== dataPathRefVals.length)
             throw new ErrorHandler(
               500,
               `constraints array is not the same length as array with results from querying SNOMED browser in action ${JSON.stringify(
                 aConstraintAction
               )} where  values are : ${JSON.stringify(
                 arr
-              )} and : ${JSON.stringify(constraints)}.`
+              )} and : ${JSON.stringify(dataPathRefVals)}.`
             );
 
           let validCodes = [];
@@ -1005,7 +1012,7 @@ async function getOutcome(
             //boolean value or throws error
             const boolVal = getDataFromContext(jsonIsaExpr, arr[index]);
             //code that originated the boolean value
-            const elem = constraints[index];
+            const elem = dataPathRefVals[index];
             if (boolVal) validCodes.push(elem);
           }
           //return array w responses
@@ -1056,11 +1063,11 @@ async function getOutcome(
         if(!Array.isArray(arg1_val))  arg1_val = [arg1_val];
           compObj = { $in: [aConstraintParamElem, arg1_val] };
         break;
-      case "subsetOfLhs":
+      case "isSubsetOfLhs":
         if(!Array.isArray(arg1_val))  arg1_val = new Array(arg1_val);
         compObj = { $setIsSubset: [aConstraintParamElem, arg1_val] };
         break;
-      case "subsetOf":
+      case "isSubsetOf":
         if(!Array.isArray(arg1_val))  arg1_val = new Array(arg1_val);
         compObj = { $setIsSubset: [arg1_val, aConstraintParamElem] };
         break;
