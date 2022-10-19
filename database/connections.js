@@ -16,7 +16,7 @@ const {
 const options = {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  poolSize: 8,
+  maxPoolSize: 8,
   //reconnectTries: Number.MAX_VALUE,
   //reconnectInterval: 500,
   connectTimeoutMS: 10000,

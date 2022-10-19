@@ -1,0 +1,6 @@
+addPackages.txt
+app.log
+.git
+*.md
+.cache
+node-modules/
