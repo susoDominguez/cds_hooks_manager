@@ -2,7 +2,7 @@ version: '3.7'
 services:
   nodejs:
     build: .
-    image: road2h-dmims
+    image: road2h-hooksmgmt
     container_name: dmims
     restart: unless-stopped
     ports:
