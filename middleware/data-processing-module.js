@@ -56,8 +56,7 @@ import {
 //const qs from "querystring";
 const {
   CDS_SERVICES_MS_HOST,
-  CDS_SERVICES_MS_PORT,
-  CDS_SERVICES_MS_PATH,
+  CDS_SERVICES_MS_PORT
 } = process.env;
 //cds services manager url
 //not using SSL yet
