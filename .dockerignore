@@ -1,4 +1,5 @@
 addPackages.txt
+npm-debug.log
 app.log
 .git
 *.md

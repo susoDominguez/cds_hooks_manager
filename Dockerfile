@@ -1,7 +1,12 @@
 # syntax=docker/dockerfile:1
+#Node Base image
 FROM node:16.17.0-alpine
+#run a simple process supervisor and init system designed to run as PID 1 inside minimal container environments
 RUN apk add dumb-init
+#defining production environment variable
 ENV NODE_ENV=production
+#create directory
+RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 COPY --chown=node:node package*.json ./
 ARG buildtime_MONGODB_HOST=127.0.0.1
@@ -28,6 +33,10 @@ ENV CDS_SERVICES_MS_PATH=${CDS_SERVICES_MS_PATH:-$buildtime_CDS_SERVICES_MS_PATH
 ENV MONGODB_LOGS_PORT=${MONGODB_LOGS_PORT:-$buildtime_MONGODB_LOGS_PORT}
 ENV MONGODB_LOGS=${MONGODB_LOGS:-$buildtime_MONGODB_LOGS}
 ENV PROXY_PORT=${PROXY_PORT:-$buildtime_PROXY_PORT}
+COPY --chown=node:node . .
+USER node
+EXPOSE ${PROXY_PORT}
+RUN npm ci --only=production
 HEALTHCHECK \
     --interval=10s \
     --timeout=5s \
@@ -35,8 +44,4 @@ HEALTHCHECK \
     --retries=5 \
     CMD curl ${MONGODB_HOST}:${MONGODB_HOST}/_health/ \
     || exit 1
-RUN npm ci --only=production
-COPY --chown=node:node . .
-USER node
-EXPOSE ${PROXY_PORT}
 CMD ["dumb-init", "node", "./bin/www"]
