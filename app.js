@@ -22,7 +22,7 @@ const app = express();
 //initDb().then( () => logger.info('cds-services database initiated successfully')).catch( err => logger.info('cds-services Db not init: ' + err));
 // view engine setup
 //environmental variables
-app.set('port', process.env.PORT || 3000)
+app.set('port', process.env.PROXY_PORT || 3000)
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
 

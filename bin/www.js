@@ -13,7 +13,7 @@ import gracefulShutdown from 'http-graceful-shutdown';
  * Get port from environment and store in Express.
  */
 
-var port = normalizePort(process.env.PORT || '3000');
+var port = normalizePort(process.env.PROXY_PORT || '3000');
 app.set('port', port);
 
 /**

@@ -16,7 +16,7 @@ ARG buildtime_MONGODB_NON_CIG_DB=non-cig
 ARG buildtime_SNOMEDCT=browser.ihtsdotools.org
 ARG buildtime_CDS_SERVICES_MS_HOST=127.0.0.1
 ARG buildtime_CDS_SERVICES_MS_PORT=3010
-ARG buildtime_MONGODB_LOGS=hooks_mgmt_log
+ARG buildtime_MONGODB_LOGS=hooks_ms_log
 ARG buildtime_PROXY_PORT=3000
 ENV MONGODB_HOST=${MONGODB_HOST:-$buildtime_MONGODB_HOST}
 ENV MONGODB_PORT=${MONGODB_PORT:-$buildtime_MONGODB_PORT}
@@ -36,6 +36,6 @@ HEALTHCHECK \
     --timeout=5s \
     --start-period=10s \
     --retries=5 \
-    CMD curl ${MONGODB_HOST}:${MONGODB_HOST}/_health/ \
+    CMD curl ${MONGODB_HOST}:${MONGODB_PORT}/_health/ \
     || exit 1
 CMD ["dumb-init", "node", "./bin/www"]
