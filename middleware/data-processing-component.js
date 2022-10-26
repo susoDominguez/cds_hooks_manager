@@ -116,7 +116,7 @@ export default {
       //if from CIG-based router, output is an object containing values and (possibly) CIG involved
       //if not, output is just the values
       //create value object for given eform in Map
-     if((Array.isArray(outcomeVal) && outcomeVal.length > 0) || typeof outcomeVal !== 'undefined') {
+     if((Array.isArray(outcomeVal) && outcomeVal.length > 0) || (!Array.isArray(outcomeVal) && typeof outcomeVal !== 'undefined') ) {
       let aParam = new Array(aMongoDbDocName);
 
       //could it be different for other models
@@ -163,7 +163,7 @@ export default {
   requestCdsServices: async function (req, res, next) {
       //convert Map to object
       let cdsData = JSON.parse(JSON.stringify(res.locals.hookData));
-      //logger.info(`cdsData is ${cdsData}`);
+      logger.info(`"body of request call to cds services manager is ${JSON.stringify(cdsData)}`);
       //send request
       const data = await callCdsServicesManager(req.params.hook, req.params.cigId, cdsData);
        //return response

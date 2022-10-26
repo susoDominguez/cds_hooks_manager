@@ -1,50 +1,10 @@
 version: '3.7'
 services:
-  nodejs:
-    build: .
-    image: road2h-hooksmgmt
-    container_name: dmims
+  db:
+    image: mongo:4.4.17
     restart: unless-stopped
     ports:
-      - "80:3000"
-    environment:
-      - MONGODB_HOST=mongodb
-      - MONGODB_PORT=27017
-      - MONGODB_DB=road2h
-      - MONGODB_LOGS_PORT=27017
-      - MONGODB_LOGS=logs
-      - PORT=3000
-      - SUBCIG_COLLECTION=copd-cig-parameters
-      - TEMPLATES=dss-templates
-      - TEMPLATES_COPD=dss-templates
-      - CDS_SERVICES=cds-services
-      - TREATMENT_REVIEW_ROUTE=copd-assess
-      - TREATMENT_SELECT_ROUTE=copd-careplan-select
-      - TMR_HOST=tmrweb
-      - TMR_PORT=8888
-      - TMR_DB=tmrweb
-      - TMR_CIG_CREATE=guideline/create
-      - TMR_CIG_DELETE=guideline/delete
-      - TMR_CIG_ADD=guidelines/add
-      - TMR_CIG_GET=guidelines/cig/get
-      - TMR_CIGS_INTERACTIONS=guidelines/interactions
-      - ARGUMENTATION_ENGINE_URL=aba-plus-g.herokuapp.com/generate_explanations
-      - DMIMS_HOST=localhost
-      - DMIMS_PORT=4000
-      - DMIMS_PATH=tmr
-    depends_on: 
-      - db
-    #  - .:/home/node/app
-    #  - node_modules:/home/node/app/node_modules
-    networks:
-      - dmims
-      - tmrwebx_cig_handler
-    #command: ./wait-for.sh db:27017 -- /home/node/app/node_modules/.bin/nodemon app.js
-  db:
-    image: mongo:latest
-    restart: unless-stopped
-    ports: 
-        - "27017:27017"
+      - "27017:27017"
     container_name: mongodb
     volumes:
       - ~/mongodata:/data/db
@@ -52,9 +12,39 @@ services:
       - dmims
 #external_links: 
 #  - tmrweb
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cds_hooks_ms
+    container_name: hooks_manager_service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_LOGS=hooks_ms_log
+      - MONGODB_CIG_MODEL=tmr
+      - MONGODB_NONCIG_DB_NAME=non-cig
+      - CDS_SERVICES_MS_HOST=services_manager_service
+      - CDS_SERVICES_MS_PORT=3010
+      - SNOMEDCT_BASE_URL=snowstorm-fhir.snomedtools.org
+      - PROXY_PORT=3000
+    links:
+      - db
+    depends_on:
+      - db
+    #  - .:/home/node/app
+    #  - node_modules:/home/node/app/node_modules
+    networks:
+      - dmims
+    #  - tmrwebx_cig_handler
+    #command: ./wait-for.sh db:27017 -- /home/node/app/node_modules/.bin/nodemon app.js
 networks:
   dmims: {}
-  tmrwebx_cig_handler:
-    external: true
+ # tmrwebx_cig_handler:
+  #  external: true
+
 #volumes: 
- # - ~/mongodata:
+# - ~/mongodata:

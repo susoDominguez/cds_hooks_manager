@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 #Node Base image
 FROM node:16.17.0-alpine
+LABEL org.opencontainers.image.authors="jesus.dominguez@kcl.ac.uk"
 #run a simple process supervisor and init system designed to run as PID 1 inside minimal container environments
 RUN apk add dumb-init
 #defining production environment variable
@@ -30,7 +31,7 @@ ENV PROXY_PORT=${PROXY_PORT:-$buildtime_PROXY_PORT}
 COPY --chown=node:node . .
 USER node
 EXPOSE ${PROXY_PORT}
-RUN npm ci --only=production
+RUN npm ci --omit=dev --only=production
 HEALTHCHECK \
     --interval=10s \
     --timeout=5s \
