@@ -24,9 +24,6 @@ services:
     environment:
       - MONGODB_HOST=mongodb
       - MONGODB_PORT=27017
-      - MONGODB_LOGS=hooks_ms_log
-      - MONGODB_CIG_MODEL=tmr
-      - MONGODB_NONCIG_DB_NAME=non-cig
       - CDS_SERVICES_MS_HOST=services_manager_service
       - CDS_SERVICES_MS_PORT=3010
       - SNOMEDCT_BASE_URL=snowstorm-fhir.snomedtools.org
