@@ -6,7 +6,7 @@ const {
   MONGODB_HOST,
   MONGODB_PORT,
   MONGODB_CIG_MODEL,
-  MONGODB_NONCIG_DB_NAME,
+  MONGODB_NONCIG_DB_NAME
 } = process.env;
 
 const options = {
@@ -30,7 +30,7 @@ const non_cig_name = MONGODB_NONCIG_DB_NAME || "non-cig";
 /// TMR MODEL:  MONGODB CONNECTION
 const cig_model_name =    MONGODB_CIG_MODEL || "tmr";
 //const cig_model_2_name = MONGODB_CIG_MODEL_2  || undefined;
-let cigModelNames = new Array(cig_model_name,cig_model_2_name);
+let cigModelNames = new Array(cig_model_name);
 //logger.info('env is ' + JSON.stringify(process.env));
 
 //create a new DB connection
