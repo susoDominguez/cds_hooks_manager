@@ -10,8 +10,7 @@ services:
       - ~/mongodata:/data/db
     networks:
       - dmims
-#external_links: 
-#  - tmrweb
+      - mongodb_network
   proxy:
     build:
       context: .
@@ -36,12 +35,29 @@ services:
     #  - node_modules:/home/node/app/node_modules
     networks:
       - dmims
-    #  - tmrwebx_cig_handler
-    #command: ./wait-for.sh db:27017 -- /home/node/app/node_modules/.bin/nodemon app.js
+  mongo-seed:
+        build:
+            context: ./mongodb-hook-processing-collections/
+            dockerfile: Dockerfile
+            args:
+                - MONGODB_PORT=27017
+        depends_on:
+            - db
+        networks:
+            - mongodb_network
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    restart: unless-stopped
+    environment:
+    - ME_CONFIG_MONGODB_SERVER=mongodb
+    - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+    depends_on:
+      - db
+    networks:
+    - mongodb_network
+    ports:
+    - 8081:8081
 networks:
   dmims: {}
- # tmrwebx_cig_handler:
-  #  external: true
-
-#volumes: 
-# - ~/mongodata:
+  mongodb_network: {}

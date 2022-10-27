@@ -453,3 +453,7 @@ healthchecksdb
 
 # Backup folder for Package Reference Convert tool in Visual Studio 2017
 MigrationBackup/
+
+#cds hooks for copd folder
+mongodb-hook-processing-collections/
+copd-cds-system-hooks
