@@ -27,6 +27,7 @@ services:
       - CDS_SERVICES_MS_PORT=3010
       - SNOMEDCT_BASE_URL=snowstorm-fhir.snomedtools.org
       - PROXY_PORT=3000
+      - LOGS=cds_hm_logs
     links:
       - db
     depends_on:

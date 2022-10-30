@@ -5,3 +5,6 @@ app.log
 *.md
 .cache
 node-modules/
+#cds hooks for copd folder
+mongodb-hook-processing-collections/
+copd-cds-system-hooks

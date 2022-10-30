@@ -321,7 +321,7 @@ const cdsServiceSchema = new mongoose.Schema(
 );
 
 //cds services model
-const serviceModel = servicesConnection.model("Cds-Service", cdsServiceSchema);
+const serviceModel = servicesConnection.model("Cds-Service", cdsServiceSchema, 'cds-services');
 
 /**
  *
@@ -333,7 +333,7 @@ function getModelbyCig(cigId, hookId) {
 
   let Param = undefined;
   //default database name for hooks which require no CIG tools
-  let cigTool = cigId? cigId : "non-cig";
+  let cigTool = cigId ? cigId : "non-cig";
   try {
     Param = connectionsList.get(cigTool).model("Parameter", paramSchema, hookId);
     if (Param === undefined)

@@ -5,13 +5,13 @@ const { combine, timestamp, printf, json } = winston.format;
 
 //winston.add(new winston.transports.MongoDB(options));
 
-const { MONGODB_HOST, MONGODB_PORT, MONGODB_LOGS, MONGODB_CIG_MODEL } = process.env;
+const { MONGODB_HOST, MONGODB_PORT, LOGS, MONGODB_CIG_MODEL } = process.env;
 
 const db_host = MONGODB_HOST || "localhost";
 const db_port = MONGODB_PORT || "27017";
 const db_name = (MONGODB_CIG_MODEL + '-db') || "tmr-db";
 //const db_name_2 = (MONGODB_CIG_MODEL_2 + '-db') || "some_cig-db";
-const logs_name = MONGODB_LOGS || "cds_hm_logs";
+const logs_name = LOGS || "cds_hm_logs";
 const url = `mongodb://${db_host}:${db_port}/${db_name}`;
 // define the custom settings for each transport (file, console)
 var options = {
