@@ -819,11 +819,11 @@ async function applyActions(hookCntxtObj, processingActions, dataPathMap) {
             break;
         }
 
-        logger.info(`Function: function ${anActionLabel} returns ${newVal}.`);
+        logger.info(`Function: function ${anActionLabel} returns ${JSON.stringify(newVal)}.`);
         break;
     } //endOf main Switch
 
-    logger.info(`Datapath with key ${arg1Ref} has value ${newVal}.`);
+    logger.info(`PathList with parameter label ${arg1Ref} has value ${newVal}.`);
     //replace argument with resulting value
     dataPathMap.set(arg1Ref, newVal);
   } //endOfLoop
