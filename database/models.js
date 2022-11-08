@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { servicesConnection, connectionsList } from "./connections.js";
+import { servicesConnection, connectionsMap } from "./connections.js";
 //import logger from "../config/winston.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
 import logger from "../config/winston.js";
@@ -335,8 +335,8 @@ function getModelbyCig(cigId, hookId) {
   //default database name for hooks which require no CIG tools
   let cigTool = cigId ? cigId : "non-cig";
   try {
-    Param = connectionsList.get(cigTool).model("Parameter", paramSchema, hookId);
-    if (Param === undefined)
+    Param = connectionsMap.get(cigTool).model("Parameter", paramSchema, hookId);
+    if (typeof Param === 'undefined')
       throw new Error(
         "constant CigSelect has not been instantiated with a Model"
       );

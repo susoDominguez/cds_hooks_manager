@@ -28,7 +28,7 @@ const cds_services_db = "cds-services";
 const non_cig_name = MONGODB_NONCIG_DB_NAME || "non-cig";
 //ADD BELOW INTEGRATED CIG FORMALISMS MONGODB
 /// TMR MODEL:  MONGODB CONNECTION
-const cig_model_name =    MONGODB_CIG_MODEL || "tmr";
+const cig_model_name =  MONGODB_CIG_MODEL || "tmr";
 //const cig_model_2_name = MONGODB_CIG_MODEL_2  || undefined;
 let cigModelNames = new Array(cig_model_name);
 //logger.info('env is ' + JSON.stringify(process.env));
@@ -71,14 +71,14 @@ const servicesConnection = makeNewConnection(
 );
 
 //key-value list of available databases for CDS Services
-let connectionsList = new Map();
+const connectionsMap = new Map();
 
 //non-cig DB
 const nonCigConnection = makeNewConnection(
   `mongodb://${host}:${port}/${non_cig_name}-db`
 );
 //add new connections to MAP
-connectionsList.set(MONGODB_NONCIG_DB_NAME, nonCigConnection);
+connectionsMap.set(non_cig_name, nonCigConnection);
 
 //ADD BELOW INTEGRATED CIG FORMALISMS MONGODB CONNECTION
 cigModelNames.forEach( modelName => {
@@ -88,9 +88,9 @@ cigModelNames.forEach( modelName => {
       `mongodb://${host}:${port}/${modelName}-db`
     );
       //add cig formalism connection to list
-    connectionsList.set(modelName, cig_model_connection);
+    connectionsMap.set(modelName, cig_model_connection);
   }
 })
 
 
-export { servicesConnection, connectionsList };
+export { servicesConnection, connectionsMap };
