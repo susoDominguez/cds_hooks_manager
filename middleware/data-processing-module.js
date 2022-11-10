@@ -41,6 +41,7 @@ import {
   arr_diff_nonSymm,
   calculate_age,
   getYearsFromNow,
+  arr_union
 } from "../lib/user-defined-functions.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
 import logger from "../config/winston.js";
@@ -796,6 +797,17 @@ async function applyActions(hookCntxtObj, processingActions, dataPathMap) {
       default: //endOf operatorName Switch
         ///name of user-defined functions. Extend by adding label and how to apply function//
         switch (anActionLabel) {
+          case "arr_union":
+            //only if 2 args are given
+        if (typeof arg2Ref === "undefined" || arg2Ref === null)
+        throw new ErrorHandler(
+          500,
+          `action 'arr_union' not applied: second argument (arg2), which it should be either a dataPath reference or a value, is missing.`
+        );
+          //get arg2 value
+          let arg2_val = fetchArgumentVal(dataPathMap, arg2Ref);
+            newVal = arr_union(arg1Val, arg2_val);
+            break;
           case "getYearsFromNow":
             //this case has only one arg so index value has to be at index 0
             newVal = getYearsFromNow(arg1Val);

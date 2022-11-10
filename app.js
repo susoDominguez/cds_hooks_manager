@@ -1,4 +1,6 @@
-import './loadEnv.js';
+import * as dotenv  from 'dotenv'
+dotenv.config({ silent: process.env.NODE_ENV === 'production' });
+//import './loadEnv.js';
 import express from 'express';
 import * as path from 'path';
 import cookieParser from 'cookie-parser';
