@@ -37,16 +37,16 @@ RUN npm ci --only=production
 
 COPY . .
 
-#COPY --chown=node:node . .
-#USER node
-EXPOSE ${PROXY_PORT}
-
 HEALTHCHECK \
     --interval=10s \
     --timeout=5s \
     --start-period=10s \
     --retries=5 \
-    CMD curl ${MONGODB_HOST}:${MONGODB_PORT}/_health/ \
+    CMD curl -f http://127.0.0.1:${PROXY_PORT}/_health \
     || exit 1
+
+#COPY --chown=node:node . .
+#USER node
+EXPOSE ${PROXY_PORT}
     
 CMD ["dumb-init", "node", "./bin/www"]

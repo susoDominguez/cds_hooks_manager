@@ -52,7 +52,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Add a health check route in express
 app.get('/_health', (req, res) => {
-  res.status(200).send('ok');
+  res.send({ success: true, message: 'it is working'});
 });
 
 //router
