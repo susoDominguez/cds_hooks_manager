@@ -54,7 +54,7 @@ MONGODB_NONCIG_DB_NAME=non-cig
 LOGS=cds_hm_logs
 ```
 Environment variables `MONGODB_HOST`, `MONGODB_PORT`, `LOGS`, `MONGODB_CIG_MODEL` and `MONGODB_NONCIG_DB_NAME` relate to the instance of the `MongoDB` where `MONGODB_HOST` is the baseURL, `MONGODB_PORT` is the port, `LOGS` is the collection to store system errors, `MONGODB_CIG_MODEL` is the identifier of the computable guideline implementation this service is working with, (could be more than one, then `MONGODB_CIG_MODEL_2`,n etc.) and `MONGODB_NONCIG_DB_MODEL` is collection that stores documents which do not access computable guideline knowledge (for instance, the COPD severity assessment algorithm mentioned above). `PROXY_PORT` is the port used by this service.
-`CDS_SERVICES_MS_HOST`, `CDS_SERVICES_MS_PORT` store the baseURL and port of the CDS Services Management (CDS-SsM) microservice implementation this service operates with (at least one CDS-SsM per computable guideline representation model implemented). Next, variables `SNOMEDCT_BASE_URL` store the **FHIR-based API endpoint** of the SNOMED CT server installed.
+`CDS_SERVICES_MS_HOST`, `CDS_SERVICES_MS_PORT` store the baseURL and port of the CDS Services Management (CDS-SsM) microservice implementation this service operates with (at least one CDS-SsM per computable guideline representation model implemented). Next, variables `SNOMEDCT_BASE_URL` store the **FHIR-based API endpoint** of the SNOMED CT server installed (as default, we direct the service to the SNOWSTORM sandbox installation).
 
 
 
