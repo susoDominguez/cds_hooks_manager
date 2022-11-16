@@ -31,7 +31,7 @@ $ git clone https://github.com/susoDominguez/cds_hooks_manager
 $ docker pull mongo
 ```
 
-3. [Install SNOWSTORM](https://github.com/IHTSDO/snowstorm), the SNOMED CT terminology server
+3. [Install SNOWSTORM](https://github.com/IHTSDO/snowstorm), the SNOMED CT terminology server. This services only interacts with the [FHIR API of the SNOWSTORM server](https://github.com/IHTSDO/snowstorm/blob/master/docs/using-the-fhir-api.md).
 
 4. Create the environment `.env` text file, to be located in the main folder of the project
 
@@ -51,10 +51,11 @@ SNOMEDCT_BASE_URL=snowstorm-fhir.snomedtools.org
 PROXY_PORT=3000
 MONGODB_CIG_MODEL=tmr
 MONGODB_NONCIG_DB_NAME=non-cig
+LOGS=cds_hm_logs
 ```
-Environment variables `MONGODB_HOST`, `MONGODB_PORT`, `LOGS`, `MONGODB_TEMPLATES` relates to the instance of the `MongoDb` where `MONGODB_HOST` is the baseURL, `MONGODB_PORT` is the port where MongoDb is reachable, `LOGS` is the collection to store system errors, and `MONGODB_TEMPLATES` is the collection that stores the templates used by the service to transfer responses in JSON format from the `TMRWebX` application (and also to transfer input to the mitigation service `ARGUMENTATION_ENGINE_URL`). `PORT` is the port used by this service. `MONGODB_CIG_MODEL` is the identifier (`tmr`) of the modelling language implemented in this instance of the CDS-SsM microservice. This identifier, among other events, supports the finding of the MongoDb collection used by this service (`tmr-db`).
-`INTERACTION_HOST`, `INTERACTION_PORT` and `INTERACTION_DB` store the baseURL, port and location of the Interactions service that manages the clinical knowledge. Next, variables `TMR_CIG_CREATE`, `TMR_CIG_DELETE`, `TMR_CIG_ADD`, `TMR_CIG_GET` and `TMR_CIGS_INTERACTIONS` store the API endpoints of the Interaction microservice from `TMRWebX`, to create CGs, delete CGs, add recommendations to CGs, get recommendations from CGs, and find interactions in CGs, respectively.
-Finally, `ARGUMENTATION_ENGINE_URL` directs the service to the location where the mitigation service is found. If this env variable is undefined, then the mitigation service is not called and the response CDS card contains at most one FHIR carePlan instance where recommendations are potentially conflictive among them.
+Environment variables `MONGODB_HOST`, `MONGODB_PORT`, `LOGS`, `MONGODB_CIG_MODEL` and `MONGODB_NONCIG_DB_NAME` relate to the instance of the `MongoDB` where `MONGODB_HOST` is the baseURL, `MONGODB_PORT` is the port, `LOGS` is the collection to store system errors, `MONGODB_CIG_MODEL` is the identifier of the computable guideline implementation this service is working with, (could be more than one, then `MONGODB_CIG_MODEL_2`,n etc.) and `MONGODB_NONCIG_DB_MODEL` is collection that stores documents which do not access computable guideline knowledge (for instance, the COPD severity assessment algorithm mentioned above). `PROXY_PORT` is the port used by this service.
+`CDS_SERVICES_MS_HOST`, `CDS_SERVICES_MS_PORT` store the baseURL and port of the CDS Services Management (CDS-SsM) microservice implementation this service operates with (at least one CDS-SsM per computable guideline representation model implemented). Next, variables `SNOMEDCT_BASE_URL` store the **FHIR-based API endpoint** of the SNOMED CT server installed.
+
 
 
 6. Install the project dependencies
@@ -66,7 +67,7 @@ $ cat requirements.txt | xargs npm install -g
 7. Run the site locally in DEBUG mode
 
 ```sh
-$ DEBUG=dss-road2h:* npm run devstart
+$ DEBUG=cds_hooks_manager:* npm run devstart
 ```
 
 ### Dockerised deployment
