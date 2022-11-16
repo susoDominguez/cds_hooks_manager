@@ -1,0 +1,185 @@
+version: '3.8'
+services:
+  busybox:
+    image: busybox
+    container_name: fuseki-data
+    networks: 
+      - cig_interaction
+    volumes: 
+      - "drug_volume:/fuseki"
+  store_app:
+    image: stain/jena-fuseki
+    environment:
+      - ADMIN_PASSWORD=${CIG_STORE_PWD}
+      - TDB=2
+      - JVM_ARGS=-Xmx2g
+      - FUSEKI_DATASET_1=careActions
+      - FUSEKI_DATASET_2=transitions
+      - FUSEKI_DATASET_3=beliefs
+      - FUSEKI_DATASET_4=CIG-COPD
+    container_name: store_service
+    restart: unless-stopped
+    env_file: .env
+    ports: 
+      - "${CIG_STORE_PORT}:3030"
+    networks: 
+      - cig_interaction
+    depends_on: 
+      - busybox
+  interaction_app:
+    build: 
+      context: ./TMRWebX/api/
+      dockerfile: Dockerfile
+    image: road2h-interaction_ms
+    container_name: interaction_service
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${CIG_INTERACTION_PORT}:8888"
+    networks: 
+      - cig_interaction
+    environment:
+      - JENA_PORT=${CIG_STORE_PORT}
+      - JENA_HOST=store_service
+      #Interaction container port
+      - PORT=${CIG_INTERACTION_PORT}
+      #password to access Store container Jena database
+      - FUSEKI_PASSWORD=${CIG_STORE_PWD}
+      #reasoner details
+      - PROLOG_HOST=reasoner_service
+      - PROLOG_PORT=1234
+    depends_on:
+      - reasoner_app
+      - store_app
+  reasoner_app:
+    build: 
+      context: ./TMRWebX/backend/
+      dockerfile: Dockerfile
+      args:
+          - FUSEKI_HOST_PORT=http://store_service:${CIG_STORE_PORT}/
+    image: road2h-reasoner_ms
+    container_name: reasoner_service
+    restart: unless-stopped
+    env_file: .env
+    stdin_open: true
+    tty: true       
+    ports: 
+      - "1234:1234"
+    environment:
+        - FUSEKI_HOST_PORT=http://store_service:${CIG_STORE_PORT}/
+    networks: 
+      - cig_interaction
+    depends_on: 
+      - store_app
+  db:
+    image: mongo:4.4.17
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${MONGODB_PORT}:27017"
+    container_name: mongodb
+    volumes:
+      - ~/mongodata:/data/db
+    networks:
+      - dmims
+      - mongodb_network
+  proxy:
+    build:
+      context: ./cds_hooks_manager/
+      dockerfile: Dockerfile
+      args:
+        - MONGODB_HOST=mongodb
+        - MONGODB_PORT=${MONGODB_PORT}
+        - LOGS=${CDS_HM_LOGS}
+        - CDS_SERVICES_MS_HOST=services_manager_service
+        - CDS_SERVICES_MS_PORT=${CDS_SM_PORT}
+        - SNOMEDCT_BASE_URL=${SNOMEDCT_FHIR_SRVR_URL}
+        - PROXY_PORT=${CDS_HM_PORT}
+    image: cds_hooks_mgmt_ms
+    container_name: hooks_manager_service
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${CDS_HM_PORT}:${CDS_HM_PORT}"
+    environment:
+        - MONGODB_HOST=mongodb
+        - MONGODB_PORT=${MONGODB_PORT}
+        - LOGS=${CDS_HM_LOGS}
+        - CDS_SERVICES_MS_HOST=services_manager_service
+        - CDS_SERVICES_MS_PORT=${CDS_SM_PORT}
+        - SNOMEDCT_BASE_URL=${SNOMEDCT_FHIR_SRVR_URL}
+        - PROXY_PORT=${CDS_HM_PORT}
+    links:
+      - db
+    depends_on:
+      - db
+    networks:
+      - dmims
+  cig_exec_engine:
+    build:
+      context: ./cds-services-manager/
+      dockerfile: Dockerfile
+      args:
+        - MONGODB_HOST=mongodb
+        - MONGODB_PORT=${MONGODB_PORT}
+        - LOGS=${CDS_SM_LOGS}
+        - PORT=${CDS_SM_PORT}
+        - INTERACTION_PORT=${CIG_INTERACTION_PORT}
+        - INTERACTION_HOST=interaction_service
+        - ARGUMENTATION_ENGINE_URL=${MITIGATION_SERVICE_URL}
+        - INTERACTION_DB=tmrweb
+    image: cds_services_mgmt_ms
+    container_name: services_manager_service
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${CDS_SM_PORT}:3010"
+    environment:
+        - MONGODB_HOST=mongodb
+        - MONGODB_PORT=${MONGODB_PORT}
+        - LOGS=${CDS_SM_LOGS}
+        - PORT=${CDS_SM_PORT}
+        - INTERACTION_PORT=${CIG_INTERACTION_PORT}
+        - INTERACTION_HOST=interaction_service
+        - ARGUMENTATION_ENGINE_URL=${MITIGATION_SERVICE_URL}
+        - INTERACTION_DB=tmrweb
+    depends_on: 
+      - db
+    networks:
+      - dmims
+      - cig_interaction
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    restart: unless-stopped
+    environment:
+    - ME_CONFIG_MONGODB_SERVER=mongodb
+    - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+    depends_on:
+      - db
+    networks:
+    - mongodb_network
+    ports:
+    - 8081:8081
+  mongo-seed:
+        build:
+            context: ./cds_hooks_manager/mongodb-hook-processing-collections/
+            dockerfile: Dockerfile
+            args:
+                - MONGODB_PORT=${MONGODB_PORT}
+        depends_on:
+            - db
+        networks:
+            - mongodb_network
+volumes:
+  drug_volume:
+    name: drug_volume
+  mongodata:
+    name: mongodata
+networks:
+  dmims:
+    name: dmims
+  cig_interaction:
+    name: cig_interaction
+  mongodb_network:
+    name: mongodb_network
