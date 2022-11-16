@@ -1,3 +1,5 @@
+# CDS Hooks Management microservice
+
 #### Deployed at
 
 <img src="Kings_College_London-logo.png" width="150">
@@ -6,20 +8,13 @@
 
 <img src="heliant_logo.jpeg" width="150">
 
-# Introduction
+## Introduction
 
-This repository contains an implementation of one of the services which is part of the Microservice Architecture for Guideline Embedding into Decision Support Systems (MAGE-DSS). In particular, this code repository implements the CDS Hooks Management (CDS-HsM) microservice. The CDS HsM microservice is a service agnostic to implementations of guideline modelling languages. It functions as the only point of entry between the CDS client (via FHIR and CDS hook specifications) and the computable guideline enactment engine.
+This code repository contains one of the services which is part of the *Microservice Architecture for Guideline Embedding into Decision Support Systems* (**MAGE-DSS**). In particular, this repository implements the **CDS Hooks Management** (CDS-HsM) **microservice**. The CDS HsM microservice is an agnostic service to implementations of guideline modelling languages. It functions as the single point of entry between CDS clients (via FHIR and CDS hook specifications) and any implementation of a computable guideline enactment engine.
 
-This implementation offers an algorithm to identify and aggregate clinical recommendations from one or more TMR-based computable guidelines (CGs) using the context included in the request call made by the [CDS Hooks Manager microservice](https://github.com/susoDominguez/cds_hooks_manager) as well as the knowledge reachable by the API of the 'CG Interaction microservice' which is part of the collection of computable guidelines authoring microservice architecture, where a TMR-based implementation of said architecture can be found in [TMRWebX](https://github.com/susoDominguez/TMRWebX). Furthermore, we have implemented a service that converts knowledge from TMR (both guideline knowledge and information on interactions among the aggregated recommendations), and possibly from an external mitigation service, into a [CDS suggestion card](https://cds-hooks.org/#cds-cards). The algorithm to map TMR to FHIR terms is in the [TMR2FHIRconverter repo](https://github.com/susoDominguez/TMR2FHIRconverter). The mitigation service can be found in the [ABAPlusG repo](https://github.com/susoDominguez/ABAPlusG).
+The CDS-HsM microservice leverages the existing CDS hook specification and computable guideline knowledge to query the clinical workflow context, part of any CDS-Hooks-compliant CDS request call, to search, and manipulate, clinical and patient data. The result can be as simple as fetching the FHIR patient identifier from the hook context, to identify URIs that triggered (parts of) implemented computable guidelines, to even describe more complex algorithms (for instance, we have implemented the COPD severity assessment algorithm form [GOLD 2017 guideline](https://goldcopd.org/wp-content/uploads/2017/02/wms-GOLD-2017-FINAL.pdf) using solely the available actions which are included with this microservice functionality).
 
-The point of entry for any TMR-based hook is via `baseURL/cds-services/copd-careplan-review/cigModel/tmr`.
-
-The structure of the context taken by the CDS-SsM microservice is as follows:
-`[["paramName", {"value": val, "activeCIG";[cigIds]}]]`
-where the context list contains mappings, in array form, from parameter labels to JSON objects, where each array has at index 0 the name of the parameter (`paramName`), and at index 1 the JSON object with one fixed parameter labelled as `value`, which has the value associated with `paramName`, and an optional parameter field labelled `activeCIG` which contains a list of computable guideline identifiers which are triggered by the contents of `value`, that is, `value` contains one or more TMR-based subguideline or recommendations identifiers. For those mapping where `activeCIG` is `undefined`, then an implementation of the functionality is expected to be part of the CDS-SsM, except for parameters with label `patientId` and `encounterId` as their implementation is added to any TMR-based hook.
-
-
-# Getting started
+## Getting started
 
 This repository is built using either Docker or [NPM](https://www.npmjs.com/). In order to run the microservice locally or build this project, you will need to [install Node ~12.13](https://nodejs.org/en/download/) and [install NPM ~6.13](https://www.npmjs.com/) as well as the database [MongoDb](https://www.mongodb.com/), which contains the templates to store the response from the `TMRWebX` microservices and the logs of the CDS-SsM microservice. We strongly recommend using a Node version manager like [nvm](https://github.com/nvm-sh/nvm) to install Node.js and npm. We do not recommend using a Node installer, since the Node installation process installs npm in a directory with local permissions and can cause permissions errors when you run npm packages globally.
 
