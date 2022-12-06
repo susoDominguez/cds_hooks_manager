@@ -47,6 +47,6 @@ HEALTHCHECK \
 
 #COPY --chown=node:node . .
 #USER node
-EXPOSE ${PROXY_PORT}
+#EXPOSE 3001
     
 CMD ["dumb-init", "node", "./bin/www"]
