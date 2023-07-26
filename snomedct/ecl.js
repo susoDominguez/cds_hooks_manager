@@ -230,7 +230,7 @@ function setIsaQueryExpr(codeA, codeB, codeSys, version) {
     baseUrl +
     urlCodeSys +
     `${codeSys ? `&version=${snomedUrl}/${codeSys}` : ""}${
-      codeSys && version ? `/version/${version}` : ""
+      codeSys && version ? `/version/${version}` : `&system=http://snomed.info/xsct`
     }`;
 
   logger.info(`setIsaQueryExpr: url is ${finalUrl}`);
@@ -256,8 +256,8 @@ function setEclQuery(expression, code, count, codeSys, version, filter) {
   let url = `/ValueSet/$expand?url=http://snomed.info/sct?fhir_vs=ecl/`;
 
   let postUrl = `${code}${count ? `&count=${count}` : ""}${
-    codeSys ? `&system-version=${snomedUrl}/${codeSys}` : ""
-  }${codeSys && version ? `/version/${version}` : ""}${
+    codeSys ? `&system-version=${snomedUrl}/${codeSys}` : `&system=http://snomed.info/xsct`
+  }${codeSys && version ? `/version/${version}` : }${
     filter ? `&filter=${filter}` : ""
   }${activeCodesParams}`;
 
