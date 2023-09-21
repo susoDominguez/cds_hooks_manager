@@ -8,7 +8,6 @@ import logger from "../config/winston.js";
 //Define a sche.jsma
 const Schema = mongoose.Schema;
 
-
 //schema for template used as guidance to find, extract and modified FHIR-based data from Cds Hooks
 /*
 const paramSchema = new mongoose.Schema(
@@ -121,7 +120,7 @@ const paramSchema = new mongoose.Schema(
 const paramSchema = new mongoose.Schema(
   {
     parameter: { type: String, required: true, maxlength: 100 },
-    description: { type: String, required: true, default: "none"},
+    description: { type: String, required: true, default: "none" },
     cigInvolved: {
       type: [String],
       required: false,
@@ -133,7 +132,7 @@ const paramSchema = new mongoose.Schema(
       type: [
         {
           label: { type: String, required: true },
-          description: { type: String, required: false, default: "none"},
+          description: { type: String, required: false, default: "none" },
           Jpath: { type: String, required: true },
           typeOf: {
             type: String,
@@ -146,10 +145,10 @@ const paramSchema = new mongoose.Schema(
             required: false,
             default: undefined,
           },
-          required: { 
-            type: Boolean, 
-            required: true, 
-            default: true 
+          required: {
+            type: Boolean,
+            required: true,
+            default: true,
           },
         },
       ],
@@ -162,35 +161,34 @@ const paramSchema = new mongoose.Schema(
           action: {
             type: String,
             enum: [
-              //arg1 in arg2 List?
+              "includes",
+              "isIncluded",
+              "filterByClass",
               "in",
-              //arg2 in arg1 List?
-              "inLhs", 
-              //unary of binary functions
+              "anyElemIn",
               "function",
-              //compare arg1 and arg2 from pathList
               "comparison",
-              //compare arg1 and arg2 where arg2 is a parameter in the outcomelist
               "Qomparison",
-              //find references given a list of identifiers
               "findRef",
-              //aarg1 list is subset of arg2 list?
               "isSubsetOf",
-              //arg2 list is subset of arg1 list?
-              "isSubsetOfLhs",
-              //arg 1 is subsumed by arg2 - applied as query constraint
-              "is_a",
-               //arg 1 is subsumes arg2 - applied as query constraint
-              "has_a",
-              //one arg only
+              "isSupersetOf",
+              "isAOrEq",
+              "hasAOrEq",
+              "subsumes",
+              "subsumesOrEq",
+              "isA",
+              "hasA",
+              "contains",
               "parentOf",
               "parentOrSelfOf",
               "childOf",
               "childOrSelfOf",
+              "descendantOrSelfOf",
               "descendantOf",
-              "descendantOrSelfOr",
+              "ancestorOrSelfOf",
               "ancestorOf",
-              "ancestorOrSelfOf"
+              "subsumedBy",
+              "subsumedByOrEq",
             ],
             default: "in",
             required: false,
@@ -204,7 +202,7 @@ const paramSchema = new mongoose.Schema(
               },
               arg2: {
                 type: String,
-                required: false
+                required: false,
               },
               //case comparison and function symbol
               symbol: {
@@ -214,9 +212,9 @@ const paramSchema = new mongoose.Schema(
                 //enum: ["eq", "gt", "gte", "lt", "lte", "ne"],
               },
               //case findRef //TODO: review this
-              Jpath: { 
-                type: String, 
-                required: false 
+              Jpath: {
+                type: String,
+                required: false,
               },
               typeOf: {
                 type: String,
@@ -227,39 +225,41 @@ const paramSchema = new mongoose.Schema(
               termSystem: {
                 type: String,
                 required: false,
-                enum: ["SCT", "LOINC", "READ","ICD10"],
+                enum: ["SCT", "LOINC", "READ", "ICD10"],
               },
               //find concept relations: Terminology system
               codeSystem: {
-                type: String,
-                required: false
+                type: Number,
+                required: false,
               },
               version: {
-                type: String,
-                required: false
+                type: Number,
+                required: false,
               },
               filter: {
                 type: String,
-                required: false
+                required: false,
               },
               count: {
                 type: Number,
-                required: false
-              }
+                required: false,
+              },
             },
           },
-        }
+        },
       ],
       required: true,
       default: [],
     },
-    output: { //field outcome of type array is mandatory
+    constraints: {
       type: [
         {
-        constraintParam: { type: [Schema.Types.Mixed], required: true, default: [] },
-        outcome: { type: [Schema.Types.Mixed], required: true, default: [] },
-      },
-    ],
+          actionsRef: { 
+            type: [Schema.Types.Mixed]
+          },
+          output: { type: [Schema.Types.Mixed]},
+        },
+      ],
       required: false,
       default: [],
     },
@@ -301,11 +301,15 @@ const templateSchema = new Schema(
 
 const cdsServiceSchema = new mongoose.Schema(
   {
-    cigModel: { type: String, required: true, default: "tmr" },
+    cigModel: { type: String, required: false, default: "tmr" },
     services: {
       type: [
         {
-          hook: { type: String, required: true, default: "copd-careplan-review" },
+          hook: {
+            type: String,
+            required: true,
+            default: "copd-careplan-review",
+          },
           title: { type: String, required: true },
           description: { type: String, required: true },
           id: { type: String, required: true, default: "copd-careplan-review" },
@@ -321,7 +325,11 @@ const cdsServiceSchema = new mongoose.Schema(
 );
 
 //cds services model
-const serviceModel = servicesConnection.model("Cds-Service", cdsServiceSchema, 'cds-services');
+const serviceModel = servicesConnection.model(
+  "Cds-Service",
+  cdsServiceSchema,
+  "cds-services"
+);
 
 /**
  *
@@ -330,24 +338,17 @@ const serviceModel = servicesConnection.model("Cds-Service", cdsServiceSchema, '
  * @returns
  */
 function getModelbyCig(cigId, hookId) {
-
   let Param = undefined;
   //default database name for hooks which require no CIG tools
-  let cigTool = cigId ? cigId : "non-cig";
+  let cigTool = typeof cigId !== "undefined" ? cigId : "non-cig";
   try {
+    //creates collection even if not found
     Param = connectionsMap.get(cigTool).model("Parameter", paramSchema, hookId);
-    if (typeof Param === 'undefined')
-      throw new Error(
-        "constant CigSelect has not been instantiated with a Model"
-      );
   } catch (err) {
-    throw new ErrorHandler(500, "getModelbyCig: " + err.message);
+    throw new ErrorHandler(500, "getModelbyCig: connection has not been instantiated with a Model" );
   }
-  
+
   return Param;
 }
 
-export {
-  serviceModel,
-  getModelbyCig,
-};
+export { serviceModel, getModelbyCig };

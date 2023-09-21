@@ -6,6 +6,7 @@ const {
   MONGODB_HOST,
   MONGODB_PORT,
   MONGODB_CIG_MODEL,
+  MONGODB_CIG_MODEL_2,
   MONGODB_NONCIG_DB_NAME
 } = process.env;
 
@@ -29,8 +30,9 @@ const non_cig_name = MONGODB_NONCIG_DB_NAME || "non-cig";
 //ADD BELOW INTEGRATED CIG FORMALISMS MONGODB
 /// TMR MODEL:  MONGODB CONNECTION
 const cig_model_name =  MONGODB_CIG_MODEL || "tmr";
-//const cig_model_2_name = MONGODB_CIG_MODEL_2  || undefined;
-let cigModelNames = new Array(cig_model_name);
+const cig_model_2_name = MONGODB_CIG_MODEL_2  || undefined;
+let cigModelNames = (new Array(cig_model_name,cig_model_2_name)).filter( modelName => modelName !== undefined);
+
 //logger.info('env is ' + JSON.stringify(process.env));
 
 //create a new DB connection
@@ -82,14 +84,11 @@ connectionsMap.set(non_cig_name, nonCigConnection);
 
 //ADD BELOW INTEGRATED CIG FORMALISMS MONGODB CONNECTION
 cigModelNames.forEach( modelName => {
-  if(typeof modelName !== 'undefined'){
-    //CIG model DB
     let cig_model_connection = makeNewConnection(
       `mongodb://${host}:${port}/${modelName}-db`
     );
       //add cig formalism connection to list
     connectionsMap.set(modelName, cig_model_connection);
-  }
 })
 
 

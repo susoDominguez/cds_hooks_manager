@@ -1,0 +1,66 @@
+version: '3.7'
+services:
+  redis:
+    image: redis/redis-stack-server:latest
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    container_name: redis
+    volumes:
+      - ~/redisData:/data/
+    networks:
+      - dmims
+  db:
+    image: mongo:4.4.17
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    container_name: mongodb
+    volumes:
+      - ~/mongodata:/data/db
+    networks:
+      - dmims
+      - mongodb_network
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cds_hooks_ms
+    container_name: hooks_manager_service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - CDS_SERVICES_MS_HOST=services_manager_service
+      - CDS_SERVICES_MS_PORT=3010
+      - SNOMEDCT_BASE_URL=snowstorm-fhir.snomedtools.org
+      - PROXY_PORT=3000
+      - LOGS=cds_hm_logs
+      - REDIS_HOST=
+      - REDIS_PORT=6379
+    links:
+      - db
+    depends_on:
+      - db
+    #  - .:/home/node/app
+    #  - node_modules:/home/node/app/node_modules
+    networks:
+      - dmims
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    restart: unless-stopped
+    environment:
+    - ME_CONFIG_MONGODB_SERVER=mongodb
+    - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+    depends_on:
+      - db
+    networks:
+    - mongodb_network
+    ports:
+    - 8081:8081
+networks:
+  dmims: {}
+  mongodb_network: {}

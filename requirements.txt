@@ -17,3 +17,4 @@ nodemon@2.0.20
 winston@3.8.2
 winston-mongodb@5.1.0
 xss-clean@0.1.1
+node-cache@5.1.2
