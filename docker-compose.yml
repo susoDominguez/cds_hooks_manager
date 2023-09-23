@@ -1,5 +1,15 @@
 version: '3.7'
 services:
+  redis:
+    image: redis/redis-stack-server:latest
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    container_name: redis
+    volumes:
+      - ~/redisData:/data/
+    networks:
+      - dmims
   db:
     image: mongo:4.4.17
     restart: unless-stopped
