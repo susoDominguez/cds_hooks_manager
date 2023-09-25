@@ -1,8 +1,8 @@
 import {} from "dotenv/config";
 import got from "got";
 import jsonata from "jsonata";
-import logger from "../../config/winston.js";
-import { ErrorHandler } from "../../lib/errorHandler.js";
+import logger from "../../../config/winston.js";
+import { ErrorHandler } from "../../../lib/errorHandler.js";
 const { SNOMEDCT_BASE_URL, TTL_SCT } = process.env;
 //create node-cache client
 //import nodecache from "node-cache";
@@ -55,7 +55,7 @@ import {
   anyElemIn,
   filterByClass,
   subsumesOrEq,
-} from "../../database/constants.js";
+} from "../../../database/constants.js";
 /////////////
 
 //

@@ -1,5 +1,5 @@
-import logger from "../../config/winston.js";
-import { ErrorHandler } from "../../lib/errorHandler.js";
+import logger from "../../../config/winston.js";
+import { ErrorHandler } from "../../../lib/errorHandler.js";
 import { createClient } from "redis";
 const { REDIS_HOST, REDIS_PORT } = process.env;
 

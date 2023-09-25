@@ -59,7 +59,7 @@ import {
   default as getSnomedQueryResult,
   jsonEclQueryExpr,
   jsonIsaExpr,
-} from "../ct_server_manager/snomedct/ecl.js";
+} from "../database/ct_server_manager/snomedct/ecl.js";
 //const qs from "querystring";
 const { CDS_SERVICES_MS_HOST, CDS_SERVICES_MS_PORT } = process.env;
 //cds services manager url
