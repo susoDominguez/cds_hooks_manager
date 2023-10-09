@@ -71,7 +71,7 @@ export default {
           `a parameter label is missing on one of the mongoDB document for hook ${hookId}.`
         );
 
-      logger.info(`Processing MongoDB document with label: ${aMongoDbDocName}`);
+      logger.info(`Processing parameter: ${aMongoDbDocName}`);
 
       //create object with arguments and their applicable actions.
       //It also contains output as taken from eform
@@ -163,8 +163,7 @@ export default {
           typeof outcomeVal !== "undefined" &&
           outcomeVal !== null)
       ) {
-        //there is some data to be submitted to next middleware
-        hasParamVals = true;
+       
         let aParam = new Array(aMongoDbDocName);
         //add value
         let valObj = { value: outcomeVal };
@@ -190,7 +189,7 @@ export default {
     } //endOf for await loop
 
     //Parameters to transfer to next middleware, unless is empty array
-    res.locals.hookData = hasParamVals ? parameters : new Array();
+    res.locals.hookData = parameters;
 
     //call next middleware
     next();
