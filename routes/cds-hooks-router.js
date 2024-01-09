@@ -1,6 +1,6 @@
 import express from "express";
 import dpcPackgDefault from "../middleware/data-processing-component.js";
-const { fetchParams, requestCdsServices } = dpcPackgDefault;
+const { fetchParams, requestCdsService } = dpcPackgDefault;
 import serFindPackgDef from "../database/service_finders.js";
 const  { getCdsServices, getCdsServicesByCig } = serFindPackgDef;
 import asyncMiddleware from "../lib/asyncMiddleware.js";
@@ -14,21 +14,21 @@ router.get('/',
       asyncMiddleware(getCdsServices));
 
 /* GET cds-services by CIG model on this server. */
-router.get("/cigModel/:cigId", 
+router.get("/gms/:gms_id", 
       asyncMiddleware(getCdsServicesByCig));
 
 /* POST trigger some hook attached to some CIG authoring tool */
 router.post(
-  '/:hook/cigModel/:cigId',
+  '/:service_id/gms/:gms_id',
   asyncMiddleware(fetchParams),
-  asyncMiddleware(requestCdsServices)
+  asyncMiddleware(requestCdsService)
 );
 
 /* POST trigger some hook non-attached to some CIG authoring tool */
 router.post(
-      '/:hook',
+      '/:service_id',
       asyncMiddleware(fetchParams),
-      asyncMiddleware(requestCdsServices)
+      asyncMiddleware(requestCdsService)
     );
 
 export  {router};

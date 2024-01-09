@@ -47,6 +47,7 @@ import {
   termSys,
   count,
   filterTerm,
+  noCIG,
 } from "../database/constants.js";
 import flat from "array.prototype.flat";
 import { applyUserDefinedFunct } from "../lib/user-defined-functions.js";
@@ -61,47 +62,64 @@ import {
   jsonIsaExpr,
 } from "../database/ct_server_manager/snomedct/ecl.js";
 //const qs from "querystring";
-const { CDS_SERVICES_MS_HOST, CDS_SERVICES_MS_PORT } = process.env;
-//cds services manager url
-//not using SSL yet
-const url_CdsServices = `http://${CDS_SERVICES_MS_HOST}:${CDS_SERVICES_MS_PORT}/cds-services/`;
+const { CDS_SERVICES_MS_HOST_1, CDS_SERVICES_MS_PORT_1, CDS_SERVICES_MS_ID_1,  
+        CDS_SERVICES_MS_HOST_2, CDS_SERVICES_MS_PORT_2, CDS_SERVICES_MS_ID_2,
+        CDS_SERVICES_MS_HOST_3, CDS_SERVICES_MS_PORT_3, CDS_SERVICES_MS_ID_3 } = process.env;
+const services_url_map = new Map([ 
+    [CDS_SERVICES_MS_ID_1,{"host":CDS_SERVICES_MS_HOST_1, "port":CDS_SERVICES_MS_PORT_1}],
+    [CDS_SERVICES_MS_ID_2,{"host":CDS_SERVICES_MS_HOST_2, "port":CDS_SERVICES_MS_PORT_2}],
+    [CDS_SERVICES_MS_ID_3,{"host":CDS_SERVICES_MS_HOST_3, "port":CDS_SERVICES_MS_PORT_3}]
+  ]);
 ///////////////////////////////////////////////////////
 /**
  *
- * @param {string} hookId
- * @param {string} cigId
+ * @param {string} service_id
+ * @param {string} gms_id
  * @param {Map} data
  * @returns response from cds services manager microservice
  */
-async function callCdsServicesManager(hookId, cigId, reqData) {
-  const cigModel =
-    hookId + (typeof cigId !== "undefined" ? `/cigModel/${cigId}` : ``);
-  //construct URL
-  const baseURL = url_CdsServices + cigModel;
+async function callCdsServicesManager(service_id, gms_id, reqData) {
+  //build specific services manager request call//
+  //if cig model id undefined, then add non-cig constant
+  gms_id = gms_id ?? noCIG;
+  //process.env
+  let base_URL;
+  if(services_url_map.has(gms_id)){
+    let {host, port} = services_url_map.get(gms_id);
+    //TODO: https calls
+    base_URL = `http://${host}:${port}/cds-services`;
+  } else throw new ErrorHandler(500, `environment variables missing to call CDS services manager for CDS service Id ${service_id} and CIG framework ${gms_id}`);
+  
+  //build endpoint
+  let service_endpoint = service_id ;
+      service_endpoint += (gms_id !== noCIG) ? `/cigModel/${gms_id}` : '';
+  //construct final URL
+  const SERVICE_ID_URL = `${base_URL}/${service_endpoint}`;
+
+  logger.debug(`The CDS services manager microservice being call has URL ${SERVICE_ID_URL}`);
 
   //create config
   let config = {
     method: "post",
-    url: baseURL,
+    url: SERVICE_ID_URL,
     headers: {
       "Content-Type": "application/json",
     },
     data: reqData,
   };
+
+  let data, status ;
+
   try {
     const response = await axios(config);
-    if (response.status >= 400)
-      throw new ErrorHandler(
-        500,
-        "Oops. Something went wrong! Try again please."
-      );
-    return response.data;
+    status = response.status;
+    data = response.data;
   } catch (err) {
-    throw new ErrorHandler(
-      500,
-      "post request in callCdsServicesManager fail: " +
-        (err.response ? err.response.body : err)
-    );
+    logger.error(`Error when applying callCDSServicesManager function with config; ${JSON.stringify(config)}`);
+    status = 500;
+    data = `Error at callCDSServicesManager: config: ${JSON.stringify(config)} and error: ${JSON.stringify(err)}.`
+  } finally {
+    return {"status_code":status, "response":data};
   }
 }
 /**

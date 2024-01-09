@@ -28,25 +28,44 @@ export default {
    * and the value is an object with a pair of fields:
    * the (new) data and a reference to the CIG (if existing)
    * @param {json} req request
-   * @param {json} res response
+   * @param {json} res serviceResponse
+  
    * @param {function} next callback
    */
   fetchParams: async function (req, res, next) {
     //GT SPECIFIC HOOK CONTEXT//
     //hook id extracted from route
-    let hookId = req.params.hook;
-    logger.info("hookId is " + hookId);
+    const serviceId = req.params.service_id;
+    if (!serviceId)
+      return next(
+        new ErrorHandler(500, "Error: CDS service ID missing in call.")
+      );
+    logger.info("serviceId is " + serviceId);
 
     //CIG Model id extracted from route.
     //If non-existent, use general DB for non-CIG-related hooks
-    let cigModel = req.params.cigId ?? noCIG;
-    logger.info("CIG Model is " + cigModel);
+    const cigModelId = req.params.gms_is ?? noCIG;
+    logger.info("CIG Model is " + cigModelId);
 
     //hook context
-    let hookContext = req.body;
+    const hookContext = req.body;
+    if (!hookContext)
+      return next(
+        new ErrorHandler(
+          500,
+          `CDS service ${serviceId} is missing hook context values in its message.`
+        )
+      );
 
     //instantiate Mongoose model for a particular DB collection which it is identified via its hook id
-    const Model = getModelbyCig(cigModel, hookId);
+    const Model = getModelbyCig(cigModelId, serviceId);
+    if (!Model)
+      return next(
+        new ErrorHandler(
+          500,
+          `Internal error: CDS service ${serviceId} has not been able to create a model to fetch Context Processing Documents.`
+        )
+      );
 
     //parameters to be added to request call to next middleware service:
     let parameters = new Array();
@@ -60,15 +79,17 @@ export default {
     //get cursor Promise to all parameters from this request
     for await (const aMongoDbDoc of Model.find().lean()) {
       //key of Map
-      let aMongoDbDocName = aMongoDbDoc.hasOwnProperty(paramName)
+      const aMongoDbDocName = aMongoDbDoc.hasOwnProperty(paramName)
         ? aMongoDbDoc[paramName]
         : undefined;
 
       //if label of eform missing or empty, throw error
       if (typeof aMongoDbDocName === "undefined" || aMongoDbDocName === "")
-        throw new ErrorHandler(
-          500,
-          `a parameter label is missing on one of the mongoDB document for hook ${hookId}.`
+        return next(
+          new ErrorHandler(
+            500,
+            `a parameter label is missing on one of the mongoDB document for cds service ${serviceId}.`
+          )
         );
 
       logger.info(`Processing parameter: ${aMongoDbDocName}`);
@@ -87,11 +108,13 @@ export default {
           Array.isArray(actionsObj[outputArray]) &&
           actionsObj[outputArray].length > 0
         )
-          throw new ErrorHandler(
-            500,
-            `${keyParam} has no constraint satisfaction actions, but a non-empty constraint list. This is not allowed. The constraint list contains: ${JSON.stringify(
-              actionsObj[outputArray]
-            )}.`
+          return next(
+            new ErrorHandler(
+              500,
+              `${aMongoDbDocName} has no constraint satisfaction actions, but a non-empty constraint list. This is not allowed. The constraint list contains: ${JSON.stringify(
+                actionsObj[outputArray]
+              )}.`
+            )
           );
       }
 
@@ -107,18 +130,38 @@ export default {
           ? aMongoDbDoc[pathList][0]["label"]
           : null;
       if (typeof ref2firstDatapath === null)
-        throw new ErrorHandler(
-          500,
-          `The dataPath Object is empty for parameter name ${aMongoDbDocName} when it should contain at least one element.`
+        return next(
+          new ErrorHandler(
+            500,
+            `The dataPath Object is empty for parameter name ${aMongoDbDocName} when it should contain at least one element.`
+          )
         );
 
-      //apply first: user-defined functions, then SNOMED CT queries, next comparisons between arguments
-      //no return value req as it is pass-by-ref
-      await applyActions(
-        hookContext,
-        actionsObj["processingActions"],
-        actionsObj[dataPathMap]
-      );
+      try {
+        //apply first: user-defined functions, then SNOMED CT queries, next comparisons between arguments
+        //no return value req as it is pass-by-ref
+        await applyActions(
+          hookContext,
+          actionsObj["processingActions"],
+          actionsObj[dataPathMap]
+        );
+      } catch (error) {
+        logger.error(
+          `Error in function applyActions: ${JSON.stringify(
+            error
+          )} with hookcontext ${JSON.stringify(
+            hookContext
+          )} and processingActions ${JSON.stringify(
+            actionsObj["processingActions"]
+          )} and dataPathMap ${JSON.stringify(actionsObj[dataPathMap])}.`
+        );
+        return next(
+          new ErrorHandler(
+            500,
+            `Internal error when processing CDS service ${serviceId}.`
+          )
+        );
+      }
 
       //variable to hold result for this iteration of the loop
       let outcomeVal;
@@ -130,29 +173,60 @@ export default {
         //produce list of results for each dataPath object:
         //if the list of involved CIGs is empty or we are using the non-cig Model,
         //return a mapping, otherwise return the selected Output
-        outcomeVal = await evaluateConstraints(
-          Model,
-          aMongoDbDocName,
-          actionsObj[dataPathMap],
-          actionsObj["constraintActions"],
-          actionsObj[outputArray]
-        );
-
-        /* logger.info(
-        `value to be added to Map for eform ${aMongoDbDocName} is: ${JSON.stringify(
-          outcomeVal
-        )}`
-          );*/
+        try {
+          outcomeVal = await evaluateConstraints(
+            Model,
+            aMongoDbDocName,
+            actionsObj[dataPathMap],
+            actionsObj["constraintActions"],
+            actionsObj[outputArray]
+          );
+        } catch (error) {
+          logger.error(
+            `Error function evaluateConstraints. With aMongoDbDocName ${JSON.stringify(
+              aMongoDbDocName
+            )}, dataPathMap ${JSON.stringify(
+              actionsObj[dataPathMap]
+            )}, constraintsActions ${JSON.stringify(
+              actionsObj["constraintActions"]
+            )}, outputArray ${JSON.stringify(actionsObj[outputArray])} , and error:  ${error}.`
+          );
+          return next(
+            ErrorHandler(
+              500,
+              `Internal error when processing CDS service ${serviceId}.`
+            )
+          );
+        }
       } else {
         //empty constraint list
         //add result from the last 'processingAction' action
         //where the value in arg1 has priority over the value in arg2 when both are references (keys)
         //otherwise return value from parsing hook context
-        outcomeVal = getNoConstraintsResult(
-          aMongoDbDoc,
-          actionsObj[dataPathMap],
-          ref2firstDatapath
-        );
+        try { 
+          outcomeVal = getNoConstraintsResult(
+            aMongoDbDoc,
+            actionsObj[dataPathMap],
+            ref2firstDatapath
+          );
+        } catch(error){ 
+          logger.error(
+            `Error function getNoConstraintsResult. With aMongoDbDoc ${JSON.stringify(
+              aMongoDbDoc
+            )}, dataPathMap ${JSON.stringify(
+              actionsObj[dataPathMap]
+            )}, ref2firstDatapath ${JSON.stringify(
+              ref2firstDatapath
+            )}, error ${error}}.`
+          );
+          return next(
+            ErrorHandler(
+              500,
+              `Internal error when processing CDS service ${serviceId}.`
+            )
+          );
+        }
+      
       }
       //if from CIG-based router, output is an object containing values and (possibly) CIG involved
       //if not, output is just the values
@@ -163,10 +237,10 @@ export default {
           typeof outcomeVal !== "undefined" &&
           outcomeVal !== null)
       ) {
-       
+        //create an arrat to hold the key -the given name of the param- and the value + involved CIG list (if any)
         let aParam = new Array(aMongoDbDocName);
         //add value
-        let valObj = { value: outcomeVal };
+        const valObj = { value: outcomeVal, activeCIG: undefined };
         // to represent the CIG(s) the value data (possibly sub-CIG ids) belongs to
         if (
           aMongoDbDoc.hasOwnProperty(cigInvolved) &&
@@ -177,19 +251,19 @@ export default {
 
         //add value object to parameter array
         aParam.push(valObj);
-        //add parameter array to final array
+        //add parameter array to final array that will be converted in a map
         parameters.push(aParam);
 
-        logger.info(
-          `Request body to be forwarded to next microservice is: ${JSON.stringify(
-            parameters
-          )}`
-        );
+       // logger.info(
+        //  `Request body to be forwarded to next microservice is: ${JSON.stringify(
+          //  parameters
+         // )}`
+       // );
       }
     } //endOf for await loop
 
     //Parameters to transfer to next middleware, unless is empty array
-    res.locals.hookData = parameters;
+    res.locals.service_context = parameters;
 
     //call next middleware
     next();
@@ -197,24 +271,40 @@ export default {
   /**
    *
    * @param {object} req request object
-   * @param {object} res response object
+   * @param {object} res serviceResponse
+   object
    * @param {object} next callback
    */
-  requestCdsServices: async function (req, res, next) {
-    //convert Map to object
-    let cdsData = JSON.parse(JSON.stringify(res.locals.hookData));
+  requestCdsService: async function (req, res, next) {
+    //convert response to JSON format
+    const service_args = JSON.parse(JSON.stringify(res.locals.service_context));
     logger.info(
-      `"body of request call to cds services manager is ${JSON.stringify(
-        cdsData
+      `"Body of CDS request call  ${req.params.service_id} to next microservice is ${JSON.stringify(
+        service_args
       )}`
     );
     //send request
-    const data = await callCdsServicesManager(
-      req.params.hook,
-      req.params.cigId,
-      cdsData
-    );
-    //return response
-    res.status(200).json(data);
+    let data, status;
+    try {
+      let {status_code:st, response:dt} = await callCdsServicesManager(
+        req.params.service_id,
+        req.params.gms_id,//this can be undefined if not attached to CIG framework
+        service_args );
+      status=st;
+      data = dt;
+      if(status > 400) {
+        logger.error();
+        logger.error(`Error CDS services manager response status is ${status}. Response is: ${data}`);
+        throw new Error(data);
+      }
+    } catch (err) {
+      status = 500;
+      data = {};
+      logger.error();
+      logger.error(`Error when applying callCdsServicesManager with parameters: service Id ${JSON.stringify(req.params.service_id)}, cig model Id ${JSON.stringify(req.params.cigModel_id)}, service context ${JSON.stringify(service_args)}. The error is: ${JSON.stringify(err)}`);
+    } finally {
+      res.status(status).json(data);
+    }
+    next();
   },
 };
