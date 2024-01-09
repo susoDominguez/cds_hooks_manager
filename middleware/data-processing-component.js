@@ -6,7 +6,8 @@ import {
   callCdsServicesManager,
   getNoConstraintsResult,
 } from "./data-processing-module.js";
-import { getModelbyCig } from "../database/models.js";
+import redisClient from "../database/ct_server_manager/memCachedServer/redisServer.js";
+import { getModelbyCig, getPipelineStrategiesByDb } from "../database/models.js";
 import logger from "../config/winston.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
 import {
@@ -33,23 +34,31 @@ export default {
    * @param {function} next callback
    */
   fetchParams: async function (req, res, next) {
-    //GT SPECIFIC HOOK CONTEXT//
-    //hook id extracted from route
+
+    //GET CDS SERVICE ID//
+    //service id extracted from route
     const serviceId = req.params.service_id;
+
     if (!serviceId)
       return next(
         new ErrorHandler(500, "Error: CDS service ID missing in call.")
       );
+
     logger.info("serviceId is " + serviceId);
 
-    //CIG Model id extracted from route.
+    //GET guideline management system (GMS) ID
     //If non-existent, use general DB for non-CIG-related hooks
-    const cigModelId = req.params.gms_is ?? noCIG;
-    logger.info("CIG Model is " + cigModelId);
+    const gms_id = req.params.gms_is ?? noCIG;
+    logger.info("Guideline management system is " + gms_id);
 
-    //hook context
-    const hookContext = req.body;
-    if (!hookContext)
+    //GET FHIR profile of CDS client
+    //if non-existent, use default as id
+    const profiling_id = req.params.profile_id ?? null;
+    logger.info("CDS client profiling id is " + profiling_id ? profiling_id : "none");
+
+    //GET CDS SERVICE HOOK CONTEXT DATA
+    const hookcontextData = req.body;
+    if (!hookcontextData)
       return next(
         new ErrorHandler(
           500,
@@ -58,7 +67,7 @@ export default {
       );
 
     //instantiate Mongoose model for a particular DB collection which it is identified via its hook id
-    const Model = getModelbyCig(cigModelId, serviceId);
+    const Model = getModelbyCig(gms_id, serviceId);
     if (!Model)
       return next(
         new ErrorHandler(
@@ -66,6 +75,9 @@ export default {
           `Internal error: CDS service ${serviceId} has not been able to create a model to fetch Context Processing Documents.`
         )
       );
+
+    ///////////////////////
+    ///FETCH Context processing documents for CDS service id///
 
     //parameters to be added to request call to next middleware service:
     let parameters = new Array();
@@ -120,7 +132,7 @@ export default {
 
       //transform dataPaths from e-form in fetch document into a map where the key is the eform parameter label
       //fetch specific data from hook context using mongodb e-forms, then add to initially empty MAP dataPathObjectMap
-      getDataPointValues(hookContext, aMongoDbDoc, actionsObj[dataPathMap]);
+      getDataPointValues(hookcontextData, aMongoDbDoc, actionsObj[dataPathMap]);
 
       //there must be at least one datapath element in the array, otherwise is an error
       const ref2firstDatapath =
@@ -141,7 +153,7 @@ export default {
         //apply first: user-defined functions, then SNOMED CT queries, next comparisons between arguments
         //no return value req as it is pass-by-ref
         await applyActions(
-          hookContext,
+          hookcontextData,
           actionsObj["processingActions"],
           actionsObj[dataPathMap]
         );
@@ -149,8 +161,8 @@ export default {
         logger.error(
           `Error in function applyActions: ${JSON.stringify(
             error
-          )} with hookcontext ${JSON.stringify(
-            hookContext
+          )} with hookcontextDatahookcontextData ${JSON.stringify(
+            hookcontextData
           )} and processingActions ${JSON.stringify(
             actionsObj["processingActions"]
           )} and dataPathMap ${JSON.stringify(actionsObj[dataPathMap])}.`
@@ -262,8 +274,32 @@ export default {
       }
     } //endOf for await loop
 
-    //Parameters to transfer to next middleware, unless is empty array
+    ///////////////////////////////////////////
+    ///////////////////////////////////////////
+    
+    //CREATE Parameters to transfer to next middleware, unless is empty array
+
+    //argument list for active CDS services manager service
     res.locals.service_context = parameters;
+
+    //(FHIR) profiling identifier for active CDS client
+    res.locals.profile_id = profiling_id;
+
+    //GET processing pipeline id
+      //Check whether pipeline strategies for CDS services are already stored in REDIS
+
+      //IF YES, add to body of CDS request 
+      //IF NOT, fetch from MongoDB
+    //TODO: to be extracted from service_context list and in turn from CP document
+    const Model = getPipelineStrategiesByDb();
+    if (!Model)
+      return next(
+        new ErrorHandler(
+          500,
+          `Internal error: CDS service ${serviceId} has not been able to create a model to fetch Context Processing Documents.`
+        )
+      );
+    res.locals.pipeline_id = "default";
 
     //call next middleware
     next();

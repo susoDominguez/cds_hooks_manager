@@ -270,6 +270,13 @@ const paramSchema = new mongoose.Schema(
   }
 );
 
+const pipelineSchema = new mongoose.Schema(
+  {
+    pipeline_id: { type:  String, required: true, default: "default" },
+    service_id_list: { type: [String], required: true, default : [] }
+  }
+);
+
 ///SCHEMA FOR STRUCTURAL TEMPLATES
 
 //
@@ -351,4 +358,22 @@ function getModelbyCig(cigId, hookId) {
   return Param;
 }
 
-export { serviceModel, getModelbyCig };
+/**
+ *
+ * @param {string} dbId identifier of database
+ * @returns 
+ * returns list of data processing pipeline identifiers and their associated CDS services
+ */
+function getPipelineStrategiesByDb(dbId) {
+  let Param = undefined;
+  try {
+    //creates collection even if not found
+    Param = connectionsMap.get(dbId).model("Pipeline", pipelineSchema, "pipelineStrategies");
+  } catch (err) {
+    throw new ErrorHandler(500, JSON.stringify(err));
+  }
+
+  return Param;
+}
+
+export { serviceModel, getModelbyCig, getPipelineStrategiesByDb};

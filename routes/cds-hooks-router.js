@@ -24,6 +24,13 @@ router.post(
   asyncMiddleware(requestCdsService)
 );
 
+/* POST trigger some hook attached to some CIG authoring tool using a particular FHIR profile for modelling the CDS response */
+router.post(
+      '/:service_id/gms/:gms_id/profile/:profile_id',
+      asyncMiddleware(fetchParams),
+      asyncMiddleware(requestCdsService)
+    );
+
 /* POST trigger some hook non-attached to some CIG authoring tool */
 router.post(
       '/:service_id',
