@@ -68,8 +68,12 @@ const Qomparison = "Qomparison",
   noCIG = "non-cig",
   anyElemIn = "anyElemIn",
   filterByClass = "filterByClass",
-  subsumesOrEq = "subsumesOrEq"
+  subsumesOrEq = "subsumesOrEq",
+  pipeline_id = 'pipeline_id',
+  service_id_list = 'service_id_list';
 export {
+  pipeline_id,
+  service_id_list,
   Qomparison,
   dataPathMap,
   noCIG,

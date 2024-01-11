@@ -7,7 +7,7 @@ import {
   getNoConstraintsResult,
 } from "./data-processing-module.js";
 import redisClient from "../database/ct_server_manager/memCachedServer/redisServer.js";
-import { getModelbyCig, getPipelineStrategiesByDb } from "../database/models.js";
+import { getModelbyCig } from "../database/models.js";
 import logger from "../config/winston.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
 import {
@@ -16,9 +16,7 @@ import {
   noCIG,
   dataPathMap,
   pathList,
-  outputArray,
-  action,
-  actionList,
+  outputArray
 } from "../database/constants.js";
 
 export default {
@@ -48,13 +46,13 @@ export default {
 
     //GET guideline management system (GMS) ID
     //If non-existent, use general DB for non-CIG-related hooks
-    const gms_id = req.params.gms_is ?? noCIG;
+    const gms_id = req.params.gms_id ?? noCIG;
     logger.info("Guideline management system is " + gms_id);
 
     //GET FHIR profile of CDS client
     //if non-existent, use default as id
     const profiling_id = req.params.profile_id ?? null;
-    logger.info("CDS client profiling id is " + profiling_id ? profiling_id : "none");
+    logger.info("CDS client profiling id is " + profiling_id ? profiling_id : null);
 
     //GET CDS SERVICE HOOK CONTEXT DATA
     const hookcontextData = req.body;
@@ -285,22 +283,6 @@ export default {
     //(FHIR) profiling identifier for active CDS client
     res.locals.profile_id = profiling_id;
 
-    //GET processing pipeline id
-      //Check whether pipeline strategies for CDS services are already stored in REDIS
-
-      //IF YES, add to body of CDS request 
-      //IF NOT, fetch from MongoDB
-    //TODO: to be extracted from service_context list and in turn from CP document
-    const Model = getPipelineStrategiesByDb();
-    if (!Model)
-      return next(
-        new ErrorHandler(
-          500,
-          `Internal error: CDS service ${serviceId} has not been able to create a model to fetch Context Processing Documents.`
-        )
-      );
-    res.locals.pipeline_id = "default";
-
     //call next middleware
     next();
   },
@@ -314,6 +296,7 @@ export default {
   requestCdsService: async function (req, res, next) {
     //convert response to JSON format
     const service_args = JSON.parse(JSON.stringify(res.locals.service_context));
+
     logger.info(
       `"Body of CDS request call  ${req.params.service_id} to next microservice is ${JSON.stringify(
         service_args
@@ -324,20 +307,22 @@ export default {
     try {
       let {status_code:st, response:dt} = await callCdsServicesManager(
         req.params.service_id,
-        req.params.gms_id,//this can be undefined if not attached to CIG framework
+        req.params.gms_id,
         service_args );
+
       status=st;
       data = dt;
+
       if(status > 400) {
-        logger.error();
         logger.error(`Error CDS services manager response status is ${status}. Response is: ${data}`);
         throw new Error(data);
       }
+      
     } catch (err) {
       status = 500;
       data = {};
-      logger.error();
-      logger.error(`Error when applying callCdsServicesManager with parameters: service Id ${JSON.stringify(req.params.service_id)}, cig model Id ${JSON.stringify(req.params.cigModel_id)}, service context ${JSON.stringify(service_args)}. The error is: ${JSON.stringify(err)}`);
+      logger.error(`Error when applying callCdsServicesManager with parameters: service Id ${JSON.stringify(req.params.service_id)}, cig model Id ${JSON.stringify(req.params.gms_id)}, service context ${JSON.stringify(service_args)}. The error is: ${JSON.stringify(err)}`);
+
     } finally {
       res.status(status).json(data);
     }

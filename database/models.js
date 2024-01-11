@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { servicesConnection, connectionsMap } from "./connections.js";
+import { cds_discovery_connect, connectionsMap } from "./connections.js";
 //import logger from "../config/winston.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
 import logger from "../config/winston.js";
@@ -332,25 +332,25 @@ const cdsServiceSchema = new mongoose.Schema(
 );
 
 //cds services model
-const serviceModel = servicesConnection.model(
-  "Cds-Service",
+const serviceModel = cds_discovery_connect.model(
+  "Cds-Discovery",
   cdsServiceSchema,
   "cds-services"
 );
 
 /**
  *
- * @param {string} cigId CIG model (possibly null).
- * @param {string} hookId hook id. Also, label of Collection in DB linked to CIG model
+ * @param {string} gms_id GUI ID (possibly null).
+ * @param {string} service_id hook id. Also, label of Collection in DB linked to CIG model
  * @returns
  */
-function getModelbyCig(cigId, hookId) {
+function getModelbyCig(gms_id, service_id) {
   let Param = undefined;
   //default database name for hooks which require no CIG tools
-  let cigTool = typeof cigId !== "undefined" ? cigId : "non-cig";
+  let cigTool = typeof gms_id !== "undefined" ? gms_id : "non-cig";
   try {
     //creates collection even if not found
-    Param = connectionsMap.get(cigTool).model("Parameter", paramSchema, hookId);
+    Param = connectionsMap.get(cigTool).model("Parameter", paramSchema, service_id);
   } catch (err) {
     throw new ErrorHandler(500, "getModelbyCig: connection has not been instantiated with a Model" );
   }
@@ -368,7 +368,7 @@ function getPipelineStrategiesByDb(dbId) {
   let Param = undefined;
   try {
     //creates collection even if not found
-    Param = connectionsMap.get(dbId).model("Pipeline", pipelineSchema, "pipelineStrategies");
+    Param = connectionsMap.get(dbId).model("PipelineStrategies", pipelineSchema, "pipelineStrategies");
   } catch (err) {
     throw new ErrorHandler(500, JSON.stringify(err));
   }

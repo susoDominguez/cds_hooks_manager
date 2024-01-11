@@ -1,6 +1,8 @@
 import {} from "dotenv/config";
 import jsonata from "jsonata";
 import {
+  pipeline_id,
+  service_id_list,
   paramName,
   functLabel,
   queryArgs,
@@ -56,21 +58,67 @@ import logger from "../config/winston.js";
 import mongoosePackg from "mongoose";
 const { Model } = mongoosePackg;
 import axios from "axios";
+import { getPipelineStrategiesByDb } from "../database/models.js";
 import {
   default as getSnomedQueryResult,
   jsonEclQueryExpr,
   jsonIsaExpr,
 } from "../database/ct_server_manager/snomedct/ecl.js";
+import redisClient from "../database/ct_server_manager/memCachedServer/redisServer.js";
 //const qs from "querystring";
-const { CDS_SERVICES_MS_HOST_1, CDS_SERVICES_MS_PORT_1, CDS_SERVICES_MS_ID_1,  
-        CDS_SERVICES_MS_HOST_2, CDS_SERVICES_MS_PORT_2, CDS_SERVICES_MS_ID_2,
-        CDS_SERVICES_MS_HOST_3, CDS_SERVICES_MS_PORT_3, CDS_SERVICES_MS_ID_3 } = process.env;
+const { NON_GMS_HOST, NON_GMS_PORT,
+        GMS_1_ID, GMS_1_HOST, GMS_1_PORT, 
+        GMS_2_ID, GMS_2_HOST, GMS_2_PORT, TTL_SCT } = process.env;
 const services_url_map = new Map([ 
-    [CDS_SERVICES_MS_ID_1,{"host":CDS_SERVICES_MS_HOST_1, "port":CDS_SERVICES_MS_PORT_1}],
-    [CDS_SERVICES_MS_ID_2,{"host":CDS_SERVICES_MS_HOST_2, "port":CDS_SERVICES_MS_PORT_2}],
-    [CDS_SERVICES_MS_ID_3,{"host":CDS_SERVICES_MS_HOST_3, "port":CDS_SERVICES_MS_PORT_3}]
+    [noCIG,{"host":NON_GMS_HOST, "port":NON_GMS_PORT}],
+    [GMS_1_ID,{"host":GMS_1_HOST, "port":GMS_1_PORT}],
+    [GMS_2_ID,{"host":GMS_2_HOST, "port":GMS_2_PORT}]
   ]);
+
+  let hasLoadedPipelineStrategies = false;
 ///////////////////////////////////////////////////////
+
+/**
+ * 
+ * @param {Object} value Object with fields 'host' and 'port'
+ * @param {String} cdss_id database Id
+ * @param {Map} map Map for GMSs
+ */
+ async function loadPipelinesInfo(cdss_id) {
+  
+  //if non-cig based, just return  
+  if(cdss_id === noCIG)  Promise.resolve(true);
+
+    //instantiate Mongoose model for a particular DB collection which it is identified via its hook id
+    const model = getPipelineStrategiesByDb(cdss_id);
+    if (!model) return reject(500, `Model for database ${cdss_id} has not been instantiated for fetching pipeline strategies in function loadPipelinesInfo.`);
+   
+    //retrieve strategies
+    await model.$where('this.pipeline_id !== undefined && this.service_id_list.length > 0').then(  (docs) => {
+      
+      logger.info(JSON.stringify(`docs are ${docs}`));
+      if(!docs) return resolve(true);
+
+      for (let index = 0; index < docs.length; index++) {
+        const aMongoDbDoc = docs[index];
+        let arr = aMongoDbDoc[service_id_list];
+        let strategyId = aMongoDbDoc[pipeline_id];
+        //construction of map element is dbId_serviceID -> pipelineId
+        if(Array.isArray(arr)) {
+          for (let index = 0; index < arr.length; index++) {
+            const serviceId = arr[index];
+            //db_id + service_id
+            const redisKey = cdss_id + '_' + serviceId;
+            redisClient.set(redisKey, strategyId ,'EX', TTL_SCT).then(val => logger.debug(`Redis server response for strategies uploading is ${val}`)).catch(err=>{logger.debug(`Pipeline strategies uploading error in REDIS server: ${err}`)}); 
+          }
+        } else {
+          return reject(`Expecting a list of services in field ${service_id_list} for Document PipelineStrategies in database ${cdss_id}.`);
+        } 
+      }
+    });
+
+}
+
 /**
  *
  * @param {string} service_id
@@ -80,28 +128,60 @@ const services_url_map = new Map([
  */
 async function callCdsServicesManager(service_id, gms_id, reqData) {
   //build specific services manager request call//
-  //if cig model id undefined, then add non-cig constant
-  gms_id = gms_id ?? noCIG;
+  
   //process.env
   let base_URL;
   if(services_url_map.has(gms_id)){
     let {host, port} = services_url_map.get(gms_id);
+
     //TODO: https calls
-    base_URL = `http://${host}:${port}/cds-services`;
+    base_URL = `http://${host}:${port}`;
   } else throw new ErrorHandler(500, `environment variables missing to call CDS services manager for CDS service Id ${service_id} and CIG framework ${gms_id}`);
   
-  //build endpoint
-  let service_endpoint = service_id ;
-      service_endpoint += (gms_id !== noCIG) ? `/cigModel/${gms_id}` : '';
-  //construct final URL
-  const SERVICE_ID_URL = `${base_URL}/${service_endpoint}`;
+  //build endpoint//
+  logger.debug(`hasLoadedPipelineStrategies value is : ${hasLoadedPipelineStrategies}`);
+  //construct path using pipeline strategy then service id
+  //if not constructed yet, do it once then update boolean
+  if(!hasLoadedPipelineStrategies) {
+    hasLoadedPipelineStrategies = true;
+    try {
+          //add pipelining info to redis
+          //await Promise.all(services_url_map.keys().map(loadPipelinesInfo));
+          //await loadPipelinesInfo(noCIG);
+          await loadPipelinesInfo(GMS_1_ID);
+          await loadPipelinesInfo(GMS_2_ID);
 
-  logger.debug(`The CDS services manager microservice being call has URL ${SERVICE_ID_URL}`);
+    } catch(err){
+        throw new Error(500, err);
+    }
+
+  }
+  
+  let service_endpoint ;
+
+  if(gms_id !== noCIG) {
+    let strategy_id, key;
+    //key is db_id + _ + service_id
+    key = `${gms_id}_${service_id}`;
+    try {
+      strategy_id = await redisClient.get(key);
+    } catch(err) {
+      throw new ErrorHandler(500, err);
+    }
+    service_endpoint = `pipeline/${strategy_id}/`;
+  } 
+  
+  service_endpoint += `cds-services/${service_id}` ;
+  
+  //construct final URL
+  const cds_service_URL = `${base_URL}/${service_endpoint}`;
+
+  logger.debug(`The CDS services manager microservice being call has URL ${cds_service_URL}`);
 
   //create config
   let config = {
     method: "post",
-    url: SERVICE_ID_URL,
+    url: cds_service_URL,
     headers: {
       "Content-Type": "application/json",
     },
@@ -115,7 +195,7 @@ async function callCdsServicesManager(service_id, gms_id, reqData) {
     status = response.status;
     data = response.data;
   } catch (err) {
-    logger.error(`Error when applying callCDSServicesManager function with config; ${JSON.stringify(config)}`);
+    logger.error(`Error when applying callCDSServicesManager function with config: ${JSON.stringify(config)}`);
     status = 500;
     data = `Error at callCDSServicesManager: config: ${JSON.stringify(config)} and error: ${JSON.stringify(err)}.`
   } finally {
@@ -302,7 +382,7 @@ function collectActionsFromDocument(mongoDbDoc) {
         obj[action] === hasAOrEq ||
         obj[action] === anyElemIn
     ),
-    //Map of arguments where the key is the parameter label and the value is the object in the pathList.
+    //Map of arguments where the cdss_id is the parameter label and the value is the object in the pathList.
     //To be extracted from clinical context as part of request
     dataPathObjectMap: new Map(),
     //Output list, potentially a list of constraint actions to be compared with arguments for selecting zero or more outcomes if triggered.
@@ -657,12 +737,12 @@ async function findReferencesInContext(hookContext, refsList, actObj) {
 }
 
 /**
- * Given a term, it applies as a key to fetch the value referenced as part of the Map built from the dataPath array. If no object is referenced by the term, it returns the term itself.
+ * Given a term, it applies as a cdss_id to fetch the value referenced as part of the Map built from the dataPath array. If no object is referenced by the term, it returns the term itself.
  * @param {Map} dataPathMap Map structure containing dataPathObjects values referenced by their label
- * @param {String} key to obtain value in Map
+ * @param {String} cdss_id to obtain value in Map
  */
-function fetchArgumentVal(dataPathMap, key) {
-  return dataPathMap.has(key) ? dataPathMap.get(key) : key;
+function fetchArgumentVal(dataPathMap, cdss_id) {
+  return dataPathMap.has(cdss_id) ? dataPathMap.get(cdss_id) : cdss_id;
 }
 
 /**
@@ -1184,7 +1264,7 @@ async function applyActions(hookCntxtObj, processingActions, dataPathMap) {
     //update referenced value with result
     dataPathMap.set(refArg, newVal);
     logger.info(
-      `DataPathMap with key: ${refArg} is being updated to value: ${JSON.stringify(
+      `DataPathMap with cdss_id: ${refArg} is being updated to value: ${JSON.stringify(
         dataPathMap.get(refArg)
       )}.`
     );
@@ -1258,7 +1338,7 @@ async function evaluateConstraints(
     //the constraint label
     let arg2Key = aConstraintAction[details][arg2];
 
-    //the key for fetching the lhs argument from dataPaths
+    //the cdss_id for fetching the lhs argument from dataPaths
     let arg1Key = aConstraintAction[details][arg1];
 
     //Next, use the lhs index to get the value for the lhs. Note that rhs could have many results to select from
@@ -1295,7 +1375,7 @@ async function evaluateConstraints(
       case isAOrEq:
       case hasAOrEq:
         //dont add results to dataPath but use directly as other subsumptions could use the same values
-        //retrieve all values from the constraint object in output for this arg2 key
+        //retrieve all values from the constraint object in output for this arg2 cdss_id
         let constraintCodes = constraints.map(
           (constr) => constr[queryArgs][arg2Key]
         );
