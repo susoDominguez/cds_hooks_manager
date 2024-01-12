@@ -6,7 +6,7 @@ import {
   callCdsServicesManager,
   getNoConstraintsResult,
 } from "./data-processing-module.js";
-import redisClient from "../database/ct_server_manager/memCachedServer/redisServer.js";
+//import redisClient from "../database/ct_server_manager/memCachedServer/redisServer.js";
 import { getModelbyCig } from "../database/models.js";
 import logger from "../config/winston.js";
 import { ErrorHandler } from "../lib/errorHandler.js";
@@ -22,10 +22,10 @@ import {
 export default {
   /**
    * Using NoSql documents as CDS hooks query instructions:
-   * find and possibly convert data from hook context into new data
-   * Store (new) data into a Map construct where the key is the name of the parameter as given document,
+   * find and possibly convert response from hook body into new response
+   * Store (new) response into a Map construct where the key is the name of the parameter as given document,
    * and the value is an object with a pair of fields:
-   * the (new) data and a reference to the CIG (if existing)
+   * the (new) response and a reference to the CIG (if existing)
    * @param {json} req request
    * @param {json} res serviceResponse
   
@@ -35,47 +35,45 @@ export default {
 
     //GET CDS SERVICE ID//
     //service id extracted from route
-    const serviceId = req.params.service_id;
+    const {service_id} = req.params;
 
-    if (!serviceId)
+    if (!service_id)
       return next(
         new ErrorHandler(500, "Error: CDS service ID missing in call.")
       );
 
-    logger.info("serviceId is " + serviceId);
+    logger.info("service_id is " + service_id);
 
     //GET guideline management system (GMS) ID
     //If non-existent, use general DB for non-CIG-related hooks
-    const gms_id = req.params.gms_id ?? noCIG;
+    const gms_id = req.params.gms_id || noCIG;
+   
     logger.info("Guideline management system is " + gms_id);
 
-    //GET FHIR profile of CDS client
-    //if non-existent, use default as id
-    const profiling_id = req.params.profile_id ?? null;
-    logger.info("CDS client profiling id is " + profiling_id ? profiling_id : null);
 
-    //GET CDS SERVICE HOOK CONTEXT DATA
-    const hookcontextData = req.body;
-    if (!hookcontextData)
+    //GET CDS SERVICE HOOK body response
+    const {body} = req;
+  //  logger.debug(`CDS service hook body response is ${JSON.stringify(body)}`)
+    if (!body)
       return next(
         new ErrorHandler(
           500,
-          `CDS service ${serviceId} is missing hook context values in its message.`
+          `CDS service ${service_id} is missing hook body values in its message.`
         )
       );
 
     //instantiate Mongoose model for a particular DB collection which it is identified via its hook id
-    const Model = getModelbyCig(gms_id, serviceId);
+    const Model = getModelbyCig(gms_id , service_id);
     if (!Model)
       return next(
         new ErrorHandler(
           500,
-          `Internal error: CDS service ${serviceId} has not been able to create a model to fetch Context Processing Documents.`
+          `Internal error: CDS service ${service_id} has not been able to create a model to fetch body Processing Documents.`
         )
       );
 
     ///////////////////////
-    ///FETCH Context processing documents for CDS service id///
+    ///FETCH body processing documents for CDS service id///
 
     //parameters to be added to request call to next middleware service:
     let parameters = new Array();
@@ -84,7 +82,7 @@ export default {
     //then it is not time yet to trigger the cds hook beyond this point
     let hasParamVals = false;
 
-    //retrieve all data for querying//
+    //retrieve all response for querying//
 
     //get cursor Promise to all parameters from this request
     for await (const aMongoDbDoc of Model.find().lean()) {
@@ -98,7 +96,7 @@ export default {
         return next(
           new ErrorHandler(
             500,
-            `a parameter label is missing on one of the mongoDB document for cds service ${serviceId}.`
+            `a parameter label is missing on one of the mongoDB document for cds service ${service_id}.`
           )
         );
 
@@ -129,8 +127,8 @@ export default {
       }
 
       //transform dataPaths from e-form in fetch document into a map where the key is the eform parameter label
-      //fetch specific data from hook context using mongodb e-forms, then add to initially empty MAP dataPathObjectMap
-      getDataPointValues(hookcontextData, aMongoDbDoc, actionsObj[dataPathMap]);
+      //fetch specific response from hook body using mongodb e-forms, then add to initially empty MAP dataPathObjectMap
+      getDataPointValues(body, aMongoDbDoc, actionsObj[dataPathMap]);
 
       //there must be at least one datapath element in the array, otherwise is an error
       const ref2firstDatapath =
@@ -151,7 +149,7 @@ export default {
         //apply first: user-defined functions, then SNOMED CT queries, next comparisons between arguments
         //no return value req as it is pass-by-ref
         await applyActions(
-          hookcontextData,
+          body,
           actionsObj["processingActions"],
           actionsObj[dataPathMap]
         );
@@ -160,7 +158,7 @@ export default {
           `Error in function applyActions: ${JSON.stringify(
             error
           )} with hookcontextDatahookcontextData ${JSON.stringify(
-            hookcontextData
+            body
           )} and processingActions ${JSON.stringify(
             actionsObj["processingActions"]
           )} and dataPathMap ${JSON.stringify(actionsObj[dataPathMap])}.`
@@ -168,7 +166,7 @@ export default {
         return next(
           new ErrorHandler(
             500,
-            `Internal error when processing CDS service ${serviceId}.`
+            `Internal error when processing CDS service ${service_id}.`
           )
         );
       }
@@ -204,7 +202,7 @@ export default {
           return next(
             ErrorHandler(
               500,
-              `Internal error when processing CDS service ${serviceId}.`
+              `Internal error when processing CDS service ${service_id}.`
             )
           );
         }
@@ -212,7 +210,7 @@ export default {
         //empty constraint list
         //add result from the last 'processingAction' action
         //where the value in arg1 has priority over the value in arg2 when both are references (keys)
-        //otherwise return value from parsing hook context
+        //otherwise return value from parsing hook body
         try { 
           outcomeVal = getNoConstraintsResult(
             aMongoDbDoc,
@@ -232,7 +230,7 @@ export default {
           return next(
             ErrorHandler(
               500,
-              `Internal error when processing CDS service ${serviceId}.`
+              `Internal error when processing CDS service ${service_id}.`
             )
           );
         }
@@ -251,7 +249,7 @@ export default {
         let aParam = new Array(aMongoDbDocName);
         //add value
         const valObj = { value: outcomeVal, activeCIG: undefined };
-        // to represent the CIG(s) the value data (possibly sub-CIG ids) belongs to
+        // to represent the CIG(s) the value response (possibly sub-CIG ids) belongs to
         if (
           aMongoDbDoc.hasOwnProperty(cigInvolved) &&
           Array.isArray(aMongoDbDoc[cigInvolved]) &&
@@ -265,7 +263,7 @@ export default {
         parameters.push(aParam);
 
        // logger.info(
-        //  `Request body to be forwarded to next microservice is: ${JSON.stringify(
+        //  `Requestbody to be forwarded to next microservice is: ${JSON.stringify(
           //  parameters
          // )}`
        // );
@@ -280,9 +278,6 @@ export default {
     //argument list for active CDS services manager service
     res.locals.service_context = parameters;
 
-    //(FHIR) profiling identifier for active CDS client
-    res.locals.profile_id = profiling_id;
-
     //call next middleware
     next();
   },
@@ -294,37 +289,45 @@ export default {
    * @param {object} next callback
    */
   requestCdsService: async function (req, res, next) {
-    //convert response to JSON format
-    const service_args = JSON.parse(JSON.stringify(res.locals.service_context));
+    const {service_context} = res.locals ;
+    const {service_id} = req.params ;
+    const gms_id = req.params.gms_id || noCIG ;
+    const {profile_id} = req.params ;
 
     logger.info(
-      `"Body of CDS request call  ${req.params.service_id} to next microservice is ${JSON.stringify(
-        service_args
+      `body of CDS request call  ${service_id} to next microservice is ${JSON.stringify(
+        service_context
       )}`
     );
+
+    const arguments_obj = JSON.parse( JSON.stringify({ 'service_context' : service_context, 'profile_id' : profile_id }));
+
     //send request
-    let data, status;
+    
+    let statusCode, resData;
+
     try {
-      let {status_code:st, response:dt} = await callCdsServicesManager(
-        req.params.service_id,
-        req.params.gms_id,
-        service_args );
 
-      status=st;
-      data = dt;
+      const {status_code, response} = await callCdsServicesManager (
+        service_id,
+        gms_id,
+        arguments_obj);
 
-      if(status > 400) {
-        logger.error(`Error CDS services manager response status is ${status}. Response is: ${data}`);
-        throw new Error(data);
+      if(status_code > 400) {
+        logger.error(`Error CDS services manager response status_code is ${status_code}. Response is: ${response}`);
+        throw new Error(response);
       }
-      
+
+      statusCode = status_code ;
+      resData = response ;
+
     } catch (err) {
-      status = 500;
-      data = {};
-      logger.error(`Error when applying callCdsServicesManager with parameters: service Id ${JSON.stringify(req.params.service_id)}, cig model Id ${JSON.stringify(req.params.gms_id)}, service context ${JSON.stringify(service_args)}. The error is: ${JSON.stringify(err)}`);
+      statusCode = 500;
+      resData = {};
+      logger.error(`Error when applying callCdsServicesManager with parameters: service Id ${JSON.stringify(service_id)}, cig model Id ${JSON.stringify(gms_id)}, service body ${JSON.stringify(service_context)}. The error is: ${JSON.stringify(err)}`);
 
     } finally {
-      res.status(status).json(data);
+      res.status(statusCode).json(resData);
     }
     next();
   },
